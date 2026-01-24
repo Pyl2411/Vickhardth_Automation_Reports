@@ -1,0 +1,41 @@
+{
+  "database": {
+    "driver": "SQL Server",
+    "server": ".\\WINCC",
+    "database": "VPI1",
+    "trusted_connection": true,
+    "table_names": {
+      "header_table": "BACKGROUND_DATA",
+      "batch_data_table": "BATCH_DATA"
+    },
+    "batch_name_column": "BATCH_NAME",
+    "pro_start_time_column": "DATE_TIME",
+    "pro_stop_time_column": "DATE_TIME"
+  },
+  "export": {
+    "default_path": "C:\\Reports"
+  },
+  "ui": {
+    "theme": "default",
+    "window_size": "1200x800",
+    "sidebar_width": 250
+  },
+  "roles": {
+    "Operator": [
+      "SR_NO",
+      "DATE_TIME",
+      "BATCH_NAME"
+    ],
+    "Engineer": [
+      "SR_NO",
+      "DATE_TIME",
+      "BATCH_NAME",
+      "DATA1",
+      "DATA2",
+      "DATA3",
+      "DATA4",
+      "DATA5"
+    ],
+    "Admin": []
+  }
+}

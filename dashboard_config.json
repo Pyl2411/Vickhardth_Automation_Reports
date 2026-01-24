@@ -1,0 +1,19 @@
+{
+  "database": {
+    "driver": "SQL Server",
+    "server": "MAHESHWAGH\\WINCC",
+    "database": "BatchReportDB",
+    "trusted_connection": true,
+    "timeout": 30
+  },
+  "export": {
+    "default_path": "C:\\Users\\waghm/Desktop/Batch Reports",
+    "auto_timestamp": true,
+    "include_summary": true
+  },
+  "ui": {
+    "auto_refresh": false,
+    "refresh_interval": 60,
+    "max_display_rows": 1000
+  }
+}
