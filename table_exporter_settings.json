@@ -2,6 +2,7 @@
   "server": "MAHESHWAGH\\WINCC",
   "database": "VPI1",
   "row_limit": "1000",
-  "logo_path": "C:/Users/waghm/OneDrive/Pictures/asus.jpg",
-  "last_save": "2026-01-24T18:00:07.948853"
+  "logo_path": null,
+  "template_path": "C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2.xlsx",
+  "last_save": "2026-01-31T17:46:33.195034"
 }

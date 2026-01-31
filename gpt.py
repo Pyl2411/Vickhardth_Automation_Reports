@@ -1,7 +1,17 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 import pyodbc
-import pandas as pd
+
+# Check pandas availability for advanced features
+try:
+    import pandas as pd
+    import numpy as np
+    PANDAS_AVAILABLE = True
+except ImportError:
+    print("Warning: pandas/numpy not available. Advanced template mapping features disabled.")
+    PANDAS_AVAILABLE = False
+    pd = None
+    np = None
 import json
 import os
 import logging
@@ -11,14 +21,17 @@ import sys
 from tkcalendar import DateEntry
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, column_index_from_string
 from openpyxl.drawing.image import Image as XLImage
 from PIL import Image, ImageTk
 import io
 import re
 import traceback
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+import subprocess
+import platform
+import difflib
+from typing import Dict, List, Optional, Any, Union, Tuple
+from dataclasses import dataclass, field, asdict
 from collections import OrderedDict
 
 # Setup logging
@@ -33,6 +46,174 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================================
+# TEMPLATE ANALYZER (AUTO HEADER + POSITION DETECTION)
+# ============================================================================
+
+class ExcelTemplateAnalyzer:
+    """Analyze an Excel template to detect header rows/columns for each sheet."""
+
+    @staticmethod
+    def _looks_like_header(value: Any) -> bool:
+        if value is None:
+            return False
+        s = str(value).strip()
+        if not s:
+            return False
+        # avoid purely numeric headers
+        numeric_like = s.replace('.', '').replace(',', '').replace('-', '').isdigit()
+        return not numeric_like
+
+    @staticmethod
+    def detect_sheet_headers(ws, max_rows: int = 30, max_cols: int = 60) -> Optional[Dict[str, Any]]:
+        """
+        Detect a header "band" in a sheet by finding a row with 2+ consecutive text-like cells.
+        Returns dict: {header_row, start_col, end_col, headers}
+        """
+        max_row = min(max_rows, ws.max_row or max_rows)
+        max_col = min(max_cols, ws.max_column or max_cols)
+
+        best = None
+        best_len = 0
+
+        for r in range(1, max_row + 1):
+            current_start = None
+            current_headers = []
+            for c in range(1, max_col + 1):
+                v = ws.cell(row=r, column=c).value
+                if ExcelTemplateAnalyzer._looks_like_header(v):
+                    if current_start is None:
+                        current_start = c
+                    current_headers.append(str(v).strip())
+                else:
+                    if current_start is not None and len(current_headers) >= 2:
+                        if len(current_headers) > best_len:
+                            best_len = len(current_headers)
+                            best = {
+                                "header_row": r,
+                                "start_col": current_start,
+                                "end_col": c - 1,
+                                "headers": current_headers[:]
+                            }
+                    current_start = None
+                    current_headers = []
+
+            # end-of-row flush
+            if current_start is not None and len(current_headers) >= 2:
+                if len(current_headers) > best_len:
+                    best_len = len(current_headers)
+                    best = {
+                        "header_row": r,
+                        "start_col": current_start,
+                        "end_col": current_start + len(current_headers) - 1,
+                        "headers": current_headers[:]
+                    }
+
+        return best
+
+    @staticmethod
+    def analyze_template(template_path: str) -> Dict[str, Dict[str, Any]]:
+        """Return analysis per sheet name."""
+        wb = load_workbook(template_path, data_only=True, keep_links=False)
+        analysis: Dict[str, Dict[str, Any]] = {}
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            info = ExcelTemplateAnalyzer.detect_sheet_headers(ws)
+            if info:
+                analysis[sheet_name] = info
+        return analysis
+
+    @staticmethod
+    def _calculate_similarity(text1: str, text2: str) -> float:
+        """Calculate similarity between two text strings using various methods."""
+        text1 = text1.lower().strip()
+        text2 = text2.lower().strip()
+
+        # Exact match gets highest score
+        if text1 == text2:
+            return 1.0
+
+        # Check for substring matches
+        if text1 in text2 or text2 in text1:
+            return 0.9
+
+        # Use difflib for fuzzy matching
+        return difflib.SequenceMatcher(None, text1, text2).ratio()
+
+    @staticmethod
+    def generate_auto_mappings(template_headers: List[str], db_columns: List[str],
+                              confidence_threshold: float = 0.6) -> Dict[str, str]:
+        """
+        Automatically generate mappings between template headers and database columns.
+
+        Args:
+            template_headers: List of headers from Excel template
+            db_columns: List of available database columns
+            confidence_threshold: Minimum similarity score for auto-mapping (0.0-1.0)
+
+        Returns:
+            Dict mapping template_header -> db_column
+        """
+        mappings = {}
+
+        for template_header in template_headers:
+            best_match = None
+            best_score = 0.0
+
+            for db_col in db_columns:
+                similarity = ExcelTemplateAnalyzer._calculate_similarity(template_header, db_col)
+                if similarity > best_score and similarity >= confidence_threshold:
+                    best_score = similarity
+                    best_match = db_col
+
+            if best_match:
+                mappings[template_header] = best_match
+
+        return mappings
+
+    @staticmethod
+    def analyze_and_map_template(template_path: str, db_columns: List[str],
+                                confidence_threshold: float = 0.6) -> Dict[str, Dict[str, Any]]:
+        """
+        Analyze template and auto-generate mappings for all sheets.
+
+        Returns:
+            Dict with structure:
+            {
+                sheet_name: {
+                    'analysis': {...},  # Original analysis data
+                    'auto_mappings': {...},  # Auto-generated mappings
+                    'confidence_scores': {...}  # Similarity scores for mappings
+                }
+            }
+        """
+        analysis = ExcelTemplateAnalyzer.analyze_template(template_path)
+        result = {}
+
+        for sheet_name, sheet_info in analysis.items():
+            template_headers = sheet_info.get('headers', [])
+
+            # Generate auto mappings
+            auto_mappings = ExcelTemplateAnalyzer.generate_auto_mappings(
+                template_headers, db_columns, confidence_threshold
+            )
+
+            # Calculate confidence scores for each mapping
+            confidence_scores = {}
+            for template_header, db_col in auto_mappings.items():
+                confidence_scores[template_header] = ExcelTemplateAnalyzer._calculate_similarity(
+                    template_header, db_col
+                )
+
+            result[sheet_name] = {
+                'analysis': sheet_info,
+                'auto_mappings': auto_mappings,
+                'confidence_scores': confidence_scores,
+                'unmapped_headers': [h for h in template_headers if h not in auto_mappings]
+            }
+
+        return result
+
+# ============================================================================
 # DATA CLASSES
 # ============================================================================
 
@@ -41,13 +222,19 @@ class TablePosition:
     """Stores position information for a table"""
     table_name: str
     sheet_name: str
-    start_row: int = 16
+    start_row: int = 16  # Minimum 4 to leave space for title
     start_col: str = "A"
     header_positions: Dict[str, str] = None
-    
+    merge_ranges: List[str] = None  # optional ranges like "A1:B1"
+    template_headers: List[str] = None  # detected headers for mapping preview
+
     def __post_init__(self):
         if self.header_positions is None:
             self.header_positions = {}
+        if self.merge_ranges is None:
+            self.merge_ranges = []
+        if self.template_headers is None:
+            self.template_headers = []
     
     def get_start_col_num(self) -> int:
         """Convert column letter to number"""
@@ -57,1846 +244,1044 @@ class TablePosition:
             result = result * 26 + (ord(char) - ord('A') + 1)
         return result
 
+@dataclass
+class CellMapping:
+    """Mapping information for a single cell"""
+    template_sheet: str
+    template_cell: str
+    data_source: str  # Could be 'fixed', 'data_table', 'calculated'
+    data_key: Optional[str] = None  # Column name or key to fetch data from
+    data_table: Optional[str] = None  # Which data table to use
+    row_offset: int = 0  # Row offset from template position
+    col_offset: int = 0  # Column offset from template position
+
+@dataclass
+class TableConfig:
+    """Configuration for a data table positioning"""
+    sheet_name: str
+    start_row: int
+    start_col: str
+    header_row: Optional[int] = None  # Row where headers are in template
+    data_start_row: Optional[int] = None  # Row where data starts in template
+    auto_detect: bool = True
+
+    def get_start_col_num(self) -> int:
+        """Convert column letter to number"""
+        col = self.start_col.upper()
+        result = 0
+        for char in col:
+            result = result * 26 + (ord(char) - ord('A') + 1)
+        return result
+
+@dataclass
+class TemplateConfig:
+    """Complete template configuration"""
+    template_name: str
+    template_file: str
+    cell_mappings: Dict[str, CellMapping] = field(default_factory=dict)
+    table_configs: Dict[str, TableConfig] = field(default_factory=dict)
+    fixed_values: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict:
+        return {
+            "template_name": self.template_name,
+            "template_file": self.template_file,
+            "cell_mappings": {k: asdict(v) for k, v in self.cell_mappings.items()},
+            "table_configs": {k: asdict(v) for k, v in self.table_configs.items()},
+            "fixed_values": self.fixed_values
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'TemplateConfig':
+        config = cls(
+            template_name=data["template_name"],
+            template_file=data["template_file"]
+        )
+        config.fixed_values = data.get("fixed_values", {})
+
+        # Load cell mappings
+        for key, mapping_data in data.get("cell_mappings", {}).items():
+            config.cell_mappings[key] = CellMapping(**mapping_data)
+
+        # Load table configs
+        for table_name, table_data in data.get("table_configs", {}).items():
+            config.table_configs[table_name] = TableConfig(**table_data)
+
+        return config
+
 # ============================================================================
-# DATABASE MANAGER
+# EXCEL EXPORTER - FIXED VERSION
 # ============================================================================
 
-class DatabaseManager:
-    """Handles database connections and queries"""
+class ExcelExporter:
+    """Export data to Excel with template support"""
     
     def __init__(self):
-        self.connection = None
-        self.cursor = None
-        self.connected = False
-        self.server_info = {}
+        self.wb = None
+        self.ws = None
+        self.current_sheet = None
+        self.table_positions = []
+        self.column_widths = {}
         
-    def connect(self, server: str, database: str, use_windows_auth: bool = True, 
-                username: Optional[str] = None, password: Optional[str] = None) -> tuple:
-        """Connect to SQL Server"""
+    def export_to_excel(self, tables: Dict[str, pd.DataFrame], output_path: str,
+                       template_path: Optional[str] = None,
+                       table_positions: List[TablePosition] = None) -> bool:
+        """
+        Export tables to Excel, optionally using a template
+        
+        Args:
+            tables: Dictionary of table names to DataFrames
+            output_path: Path to save the Excel file
+            template_path: Optional template file path
+            table_positions: Optional list of TablePosition objects for positioning
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
         try:
-            if use_windows_auth:
-                conn_str = f'DRIVER={{SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;'
+            logger.info(f"📤 Creating Excel file...")
+            
+            if template_path and os.path.exists(template_path):
+                return self._export_with_template(tables, output_path, template_path, table_positions)
             else:
-                conn_str = f'DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};'
-            
-            self.connection = pyodbc.connect(conn_str, timeout=30)
-            self.cursor = self.connection.cursor()
-            self.connected = True
-            
-            # Get server info
-            self.cursor.execute("SELECT @@VERSION")
-            version_info = self.cursor.fetchone()[0]
-            self.server_info = {
-                'version': version_info,
-                'server': server,
-                'database': database
-            }
-            
-            return True, "Connected successfully"
-            
-        except pyodbc.OperationalError as e:
-            return False, f"Connection timeout or server not reachable: {str(e)}"
-        except pyodbc.Error as e:
-            error_msg = str(e)
-            if "Login failed" in error_msg:
-                return False, "Login failed. Check username/password."
-            elif "Cannot open database" in error_msg:
-                return False, f"Database '{database}' not found or access denied."
-            else:
-                return False, f"Connection failed: {error_msg}"
-        except Exception as e:
-            return False, f"Unexpected error: {str(e)}"
-    
-    def disconnect(self):
-        """Disconnect from database"""
-        try:
-            if self.cursor:
-                self.cursor.close()
-            if self.connection:
-                self.connection.close()
-        except:
-            pass
-        finally:
-            self.connected = False
-    
-    def get_tables(self) -> List[str]:
-        """Get list of all tables with row counts"""
-        try:
-            query = """
-            SELECT 
-                s.name as schema_name,
-                t.name as table_name,
-                p.rows as row_count
-            FROM sys.tables t
-            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
-            INNER JOIN sys.partitions p ON t.object_id = p.object_id
-            WHERE p.index_id IN (0, 1)
-            GROUP BY s.name, t.name, p.rows
-            ORDER BY s.name, t.name
-            """
-            self.cursor.execute(query)
-            tables = self.cursor.fetchall()
-            return [f"{row[0]}.{row[1]} ({row[2]:,} rows)" for row in tables]
-        except Exception as e:
-            logger.error(f"Error getting tables: {e}")
-            return []
-    
-    def get_table_columns(self, table_name: str) -> List[str]:
-        """Get all columns for a table with data types"""
-        try:
-            # Remove row count info if present
-            if '(' in table_name:
-                table_name = table_name.split('(')[0].strip()
-            
-            # Remove schema if present
-            if '.' in table_name:
-                schema, table = table_name.split('.')
-                query = """
-                SELECT 
-                    c.COLUMN_NAME,
-                    c.DATA_TYPE,
-                    c.CHARACTER_MAXIMUM_LENGTH,
-                    c.IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS c
-                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                ORDER BY ORDINAL_POSITION
-                """
-                self.cursor.execute(query, (schema, table))
-            else:
-                query = """
-                SELECT 
-                    c.COLUMN_NAME,
-                    c.DATA_TYPE,
-                    c.CHARACTER_MAXIMUM_LENGTH,
-                    c.IS_NULLABLE
-                FROM INFORMATION_SCHEMA.COLUMNS c
-                WHERE TABLE_NAME = ?
-                ORDER BY ORDINAL_POSITION
-                """
-                self.cursor.execute(query, (table_name,))
-            
-            columns = self.cursor.fetchall()
-            formatted_columns = []
-            for col in columns:
-                col_name = col[0]
-                data_type = col[1]
-                length = col[2]
-                nullable = col[3]
+                return self._export_without_template(tables, output_path)
                 
-                type_info = data_type
-                if length and length > 0:
-                    type_info += f"({length})"
-                
-                formatted_columns.append(f"{col_name} ({type_info}, {nullable})")
-            
-            return formatted_columns
         except Exception as e:
-            logger.error(f"Error getting columns: {e}")
-            return []
+            logger.error(f"❌ Export error: {str(e)}")
+            logger.error(traceback.format_exc())
+            return False
     
-    def get_raw_column_names(self, table_name: str) -> List[str]:
-        """Get only column names without formatting"""
+    def _export_with_template(self, tables: Dict[str, pd.DataFrame], output_path: str,
+                             template_path: str, table_positions: List[TablePosition]) -> bool:
+        """Export using a template"""
         try:
-            # Remove row count info if present
-            if '(' in table_name:
-                table_name = table_name.split('(')[0].strip()
+            # Load template
+            self.wb = load_workbook(template_path)
             
-            if '.' in table_name:
-                schema, table = table_name.split('.')
-                query = """
-                SELECT COLUMN_NAME
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                ORDER BY ORDINAL_POSITION
-                """
-                self.cursor.execute(query, (schema, table))
+            # Apply table positions if provided
+            if table_positions:
+                for table_pos in table_positions:
+                    self._place_table_in_template(tables.get(table_pos.table_name), table_pos)
             else:
-                query = """
-                SELECT COLUMN_NAME
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = ?
-                ORDER BY ORDINAL_POSITION
-                """
-                self.cursor.execute(query, (table_name,))
+                # Default behavior: place each table in its own sheet
+                for table_name, df in tables.items():
+                    if table_name in self.wb.sheetnames:
+                        self.ws = self.wb[table_name]
+                        self._write_dataframe(df, start_row=4)
+                    else:
+                        # Create new sheet if it doesn't exist
+                        self.ws = self.wb.create_sheet(title=table_name[:31])
+                        self._write_dataframe(df, start_row=1, write_headers=True)
             
-            columns = self.cursor.fetchall()
-            return [col[0] for col in columns]
-        except Exception as e:
-            logger.error(f"Error getting raw columns: {e}")
-            return []
-    
-    def fetch_table_data(self, table_name: str, limit: Optional[int] = None) -> Dict:
-        """Fetch all data from a table"""
-        try:
-            # Clean table name
-            if '(' in table_name:
-                table_name = table_name.split('(')[0].strip()
-            
-            if '.' in table_name:
-                schema, table = table_name.split('.')
-                table_ref = f"[{schema}].[{table}]"
-            else:
-                table_ref = f"[{table_name}]"
-            
-            # Build query with limit
-            if limit and limit > 0:
-                query = f"SELECT TOP ({limit}) * FROM {table_ref}"
-            else:
-                query = f"SELECT * FROM {table_ref}"
-            
-            self.cursor.execute(query)
-            columns = [column[0] for column in self.cursor.description]
-            rows = self.cursor.fetchall()
-            
-            # Get row count for info
-            count_query = f"SELECT COUNT(*) FROM {table_ref}"
-            self.cursor.execute(count_query)
-            total_count = self.cursor.fetchone()[0]
-            
-            # Convert to list of dictionaries
-            data_list = []
-            for row in rows:
-                row_dict = {}
-                for i, col in enumerate(columns):
-                    value = row[i]
-                    if isinstance(value, datetime):
-                        value = value.strftime('%Y-%m-%d %H:%M:%S')
-                    elif isinstance(value, bytes):
-                        value = str(value)
-                    row_dict[col] = value
-                data_list.append(row_dict)
-            
-            return {
-                'success': True,
-                'table_name': table_name,
-                'display_name': self.get_display_name(table_name),
-                'data': data_list,
-                'columns': columns,
-                'row_count': len(rows),
-                'total_count': total_count
-            }
+            # Save the workbook
+            self.wb.save(output_path)
+            logger.info(f"✅ Excel file created successfully: {output_path}")
+            return True
             
         except Exception as e:
-            logger.error(f"Error fetching table {table_name}: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'table_name': table_name,
-                'display_name': self.get_display_name(table_name),
-                'data': [],
-                'columns': [],
-                'row_count': 0,
-                'total_count': 0
-            }
+            logger.error(f"❌ Template export error: {str(e)}")
+            return False
     
-    def get_display_name(self, table_name: str) -> str:
-        """Get display name from full table name"""
-        if '(' in table_name:
-            table_name = table_name.split('(')[0].strip()
-        if '.' in table_name:
-            return table_name.split('.')[-1]
-        return table_name
-
-# ============================================================================
-# TABLE POSITION MAPPING DIALOG (FIXED GUI)
-# ============================================================================
-
-class TablePositionDialog:
-    """Dialog for mapping tables to Excel positions - FIXED VERSION"""
-    
-    def __init__(self, parent, tables: List[str]):
-        self.parent = parent
-        self.tables = tables
-        self.table_positions = {}  # {table_name: TablePosition object}
-        self.result = None
-        
-        # Default header positions
-        self.default_headers = OrderedDict([
-            ("BATCH_NAME", "A1"),
-            ("BATCH_NUMBER", "A2"),
-            ("JOB_NO", "A3"),
-            ("OPERATOR_NAME", "A4"),
-            ("DATE", "H1"),
-            ("TIME", "H2"),
-            ("SHIFT", "H3"),
-            ("STATION", "H4"),
-            ("MACHINE_NO", "H5"),
-            ("PRODUCT_CODE", "A6"),
-            ("LOT_NO", "A7"),
-            ("QUANTITY", "A8"),
-            ("STATUS", "H6"),
-            ("REMARKS", "H7"),
-            ("INSPECTED_BY", "H8"),
-            ("APPROVED_BY", "H9")
-        ])
-        
-        self.create_dialog()
-        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
-    
-    def create_dialog(self):
-        """Create the table position mapping dialog with proper layout"""
-        self.dialog = tk.Toplevel(self.parent)
-        self.dialog.title("Configure Table Positions for Excel")
-        self.dialog.geometry("1300x800")
-        self.dialog.transient(self.parent)
-        self.dialog.grab_set()
-        
-        # Center dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-        
-        # Main container with scrollbar
-        main_container = ttk.Frame(self.dialog)
-        main_container.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        # Create canvas with scrollbar
-        canvas = tk.Canvas(main_container)
-        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # Title
-        title_frame = ttk.Frame(scrollable_frame, padding="10")
-        title_frame.pack(fill='x', pady=(0, 10))
-        
-        ttk.Label(title_frame, text="📊 Configure Table Positions for Excel Export", 
-                 font=('Segoe UI', 16, 'bold')).pack()
-        
-        ttk.Label(title_frame, 
-                 text="Set starting position and header mappings for each table. Each table will be on a separate sheet.",
-                 font=('Segoe UI', 10)).pack(pady=5)
-        
-        # Instructions
-        instr_frame = ttk.LabelFrame(scrollable_frame, text="📋 Instructions", padding="15")
-        instr_frame.pack(fill='x', pady=(0, 20), padx=10)
-        
-        instructions = [
-            "1. For each table, set where the data should START in Excel",
-            "2. Configure HEADER positions for common fields (optional)",
-            "3. Data will start from the specified row and column",
-            "4. Each table will be placed on a SEPARATE sheet",
-            "5. Use 'Copy Settings' to apply same settings to all tables"
-        ]
-        
-        for i, instr in enumerate(instructions):
-            ttk.Label(instr_frame, text=f"• {instr}", font=('Segoe UI', 9)).pack(anchor='w', pady=2)
-        
-        # Table configuration area
-        self.table_frames = {}
-        for table in self.tables:
-            table_frame = self.create_table_config_frame(scrollable_frame, table)
-            self.table_frames[table] = table_frame
-        
-        # Global controls
-        control_frame = ttk.Frame(scrollable_frame, padding="20")
-        control_frame.pack(fill='x', pady=20)
-        
-        # Global settings
-        global_frame = ttk.LabelFrame(control_frame, text="⚙️ Global Settings (Apply to All Tables)", padding="15")
-        global_frame.pack(fill='x', pady=(0, 20))
-        
-        # Start position
-        start_frame = ttk.Frame(global_frame)
-        start_frame.pack(fill='x', pady=10)
-        
-        ttk.Label(start_frame, text="Start Row:", font=('Segoe UI', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 10))
-        self.global_start_row = tk.IntVar(value=16)
-        ttk.Spinbox(start_frame, from_=1, to=1000, textvariable=self.global_start_row, width=10).pack(side=tk.LEFT, padx=(0, 20))
-        
-        ttk.Label(start_frame, text="Start Column:", font=('Segoe UI', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 10))
-        self.global_start_col = tk.StringVar(value="A")
-        ttk.Entry(start_frame, textvariable=self.global_start_col, width=10).pack(side=tk.LEFT)
-        
-        ttk.Button(global_frame, text="Apply Start Position to All Tables", 
-                  command=self.apply_global_start_position).pack(pady=10)
-        
-        # Header templates
-        header_frame = ttk.LabelFrame(global_frame, text="Header Templates", padding="10")
-        header_frame.pack(fill='x', pady=(10, 0))
-        
-        templates_frame = ttk.Frame(header_frame)
-        templates_frame.pack(fill='x', pady=5)
-        
-        ttk.Button(templates_frame, text="Use Default Headers", 
-                  command=lambda: self.apply_header_template("default"), width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(templates_frame, text="Clear All Headers", 
-                  command=lambda: self.apply_header_template("clear"), width=20).pack(side=tk.LEFT, padx=5)
-        
-        # Action buttons
-        action_frame = ttk.Frame(control_frame)
-        action_frame.pack(fill='x')
-        
-        ttk.Button(action_frame, text="✅ APPLY ALL MAPPINGS", 
-                  command=self.apply_mappings, style='Accent.TButton', width=25).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(action_frame, text="❌ CANCEL", 
-                  command=self.cancel, width=15).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(action_frame, text="📋 COPY FROM FIRST TABLE", 
-                  command=self.copy_from_first_table, width=20).pack(side=tk.LEFT, padx=5)
-        
-        # Bind mouse wheel for scrolling
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
-    
-    def create_table_config_frame(self, parent, table_name: str) -> ttk.Frame:
-        """Create configuration frame for a single table"""
-        frame = ttk.LabelFrame(parent, text=f"📄 {self.get_display_name(table_name)}", padding="15")
-        frame.pack(fill='x', pady=10, padx=10)
-        
-        # Table info
-        info_frame = ttk.Frame(frame)
-        info_frame.pack(fill='x', pady=(0, 15))
-        
-        ttk.Label(info_frame, text=f"Full Name: {table_name}", font=('Segoe UI', 9)).pack(anchor='w')
-        
-        # Position settings in a grid
-        grid_frame = ttk.Frame(frame)
-        grid_frame.pack(fill='x', pady=(0, 20))
-        
-        # Start Row
-        ttk.Label(grid_frame, text="Start Row:", font=('Segoe UI', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, padx=(0, 10), pady=5)
-        start_row_var = tk.IntVar(value=16)
-        ttk.Spinbox(grid_frame, from_=1, to=1000, textvariable=start_row_var, width=10).grid(row=0, column=1, sticky=tk.W, pady=5)
-        ttk.Label(grid_frame, text="(Data begins at this row)").grid(row=0, column=2, sticky=tk.W, padx=(10, 0), pady=5)
-        
-        # Start Column
-        ttk.Label(grid_frame, text="Start Column:", font=('Segoe UI', 10, 'bold')).grid(row=0, column=3, sticky=tk.W, padx=(20, 10), pady=5)
-        start_col_var = tk.StringVar(value="A")
-        ttk.Entry(grid_frame, textvariable=start_col_var, width=10).grid(row=0, column=4, sticky=tk.W, pady=5)
-        ttk.Label(grid_frame, text="(Data begins at this column)").grid(row=0, column=5, sticky=tk.W, padx=(10, 0), pady=5)
-        
-        # Header positions
-        header_label = ttk.Label(frame, text="Header Positions (Fixed Cells):", font=('Segoe UI', 10, 'bold'))
-        header_label.pack(anchor='w', pady=(0, 10))
-        
-        # Create header grid
-        header_frame = ttk.Frame(frame)
-        header_frame.pack(fill='x')
-        
-        # Create header entries in 4 columns
-        header_vars = {}
-        for i, (header_name, default_pos) in enumerate(self.default_headers.items()):
-            row = i // 4
-            col = (i % 4) * 3
-            
-            # Header name
-            ttk.Label(header_frame, text=f"{header_name}:").grid(row=row, column=col, sticky=tk.W, padx=(0, 5), pady=2)
-            
-            # Position entry
-            pos_var = tk.StringVar(value=default_pos)
-            ttk.Entry(header_frame, textvariable=pos_var, width=8).grid(row=row, column=col+1, sticky=tk.W, padx=(0, 10), pady=2)
-            
-            header_vars[header_name] = pos_var
-        
-        # Store variables as attributes
-        frame.start_row_var = start_row_var
-        frame.start_col_var = start_col_var
-        frame.header_vars = header_vars
-        
-        return frame
-    
-    def get_display_name(self, table_name: str) -> str:
-        """Get short display name for table"""
-        if '(' in table_name:
-            table_name = table_name.split('(')[0].strip()
-        if '.' in table_name:
-            return table_name.split('.')[-1]
-        return table_name[:30]
-    
-    def apply_global_start_position(self):
-        """Apply global start position to all tables"""
-        start_row = self.global_start_row.get()
-        start_col = self.global_start_col.get().upper()
-        
-        for table, frame in self.table_frames.items():
-            frame.start_row_var.set(start_row)
-            frame.start_col_var.set(start_col)
-        
-        messagebox.showinfo("Applied", f"Start position set to {start_col}{start_row} for all tables")
-    
-    def apply_header_template(self, template_type: str):
-        """Apply header template to all tables"""
-        if template_type == "default":
-            for table, frame in self.table_frames.items():
-                for header_name, pos_var in frame.header_vars.items():
-                    default_pos = self.default_headers.get(header_name, "")
-                    pos_var.set(default_pos)
-            messagebox.showinfo("Applied", "Default headers applied to all tables")
-        elif template_type == "clear":
-            for table, frame in self.table_frames.items():
-                for pos_var in frame.header_vars.values():
-                    pos_var.set("")
-            messagebox.showinfo("Cleared", "All headers cleared")
-    
-    def copy_from_first_table(self):
-        """Copy settings from first table to all others"""
-        if not self.table_frames:
-            return
-        
-        first_table = list(self.table_frames.keys())[0]
-        first_frame = self.table_frames[first_table]
-        
-        start_row = first_frame.start_row_var.get()
-        start_col = first_frame.start_col_var.get()
-        header_values = {name: var.get() for name, var in first_frame.header_vars.items()}
-        
-        for table, frame in self.table_frames.items():
-            if table != first_table:
-                frame.start_row_var.set(start_row)
-                frame.start_col_var.set(start_col)
-                for header_name, pos_var in frame.header_vars.items():
-                    if header_name in header_values:
-                        pos_var.set(header_values[header_name])
-        
-        messagebox.showinfo("Copied", f"Settings copied from '{self.get_display_name(first_table)}' to all other tables")
-    
-    def apply_mappings(self):
-        """Apply all table position mappings"""
+    def _export_without_template(self, tables: Dict[str, pd.DataFrame], output_path: str) -> bool:
+        """Export without template - create new workbook"""
         try:
-            self.table_positions = {}
-            
-            for table, frame in self.table_frames.items():
-                # Get start position
-                start_row = frame.start_row_var.get()
-                start_col = frame.start_col_var.get().upper()
-                
-                # Validate start column
-                if not re.match(r'^[A-Z]+$', start_col):
-                    messagebox.showerror("Invalid Column", 
-                                       f"Invalid column '{start_col}' for table '{self.get_display_name(table)}'. Use letters only (A, B, C, etc.)")
-                    return
-                
-                # Get header positions
-                header_positions = {}
-                for header_name, pos_var in frame.header_vars.items():
-                    pos = pos_var.get().strip()
-                    if pos:  # Only include non-empty positions
-                        header_positions[header_name] = pos.upper()
-                
-                # Create TablePosition object
-                table_pos = TablePosition(
-                    table_name=table,
-                    sheet_name=self.get_display_name(table),
-                    start_row=start_row,
-                    start_col=start_col,
-                    header_positions=header_positions
-                )
-                
-                self.table_positions[table] = table_pos
-            
-            self.result = self.table_positions
-            self.dialog.destroy()
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Error applying mappings: {str(e)}")
-    
-    def cancel(self):
-        """Cancel the mapping"""
-        self.result = None
-        self.dialog.destroy()
-    
-    def get_positions(self) -> Optional[Dict]:
-        """Get the mapping result"""
-        return self.result
-
-# ============================================================================
-# EXCEL EXPORTER (FIXED LOGO ISSUES)
-# ============================================================================
-
-class ExcelTableExporter:
-    """Handles exporting multiple tables to Excel - FIXED VERSION"""
-    
-    @staticmethod
-    def export_tables_to_excel(tables_data: Dict, table_positions: Dict[str, TablePosition], 
-                               logo_path: Optional[str] = None,
-                               output_path: str = None) -> Any:
-        """Export multiple tables to Excel with custom positions - FIXED LOGO ISSUES"""
-        try:
-            wb = Workbook()
+            self.wb = Workbook()
             
             # Remove default sheet
-            if wb.sheetnames and 'Sheet' in wb.sheetnames[0]:
-                ws_default = wb.active
-                wb.remove(ws_default)
+            if 'Sheet' in self.wb.sheetnames:
+                default_sheet = self.wb['Sheet']
+                self.wb.remove(default_sheet)
             
             # Create a sheet for each table
-            for table_name, table_data in tables_data.items():
-                if table_data.get('success', False) and table_name in table_positions:
-                    position_info = table_positions[table_name]
-                    
-                    # Create sheet
-                    sheet_name = ExcelTableExporter.get_valid_sheet_name(position_info.sheet_name)
-                    ws = wb.create_sheet(title=sheet_name)
-                    
-                    # Add content to sheet
-                    ExcelTableExporter.add_table_to_sheet(ws, table_data, position_info)
+            for table_name, df in tables.items():
+                # Truncate sheet name to 31 characters (Excel limit)
+                sheet_name = table_name[:31]
+                self.ws = self.wb.create_sheet(title=sheet_name)
+                self.current_sheet = sheet_name
+                
+                # Write table name as title
+                self.ws['A1'] = table_name
+                self.ws['A1'].font = Font(bold=True, size=14)
+                
+                # Write dataframe starting from row 3
+                self._write_dataframe(df, start_row=3, write_headers=True)
+                
+                # Auto-adjust column widths
+                self._auto_adjust_columns(df)
             
-            # Add summary sheet
-            ws_summary = wb.create_sheet(title="Summary")
-            ExcelTableExporter.add_summary_sheet(ws_summary, tables_data, table_positions)
-            
-            # Add logo AFTER all content is added (to avoid repair issues)
-            if logo_path and os.path.exists(logo_path):
-                try:
-                    # Load and resize logo
-                    img = Image.open(logo_path)
-                    # Resize to reasonable dimensions
-                    max_size = (200, 80)  # width, height
-                    img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                    
-                    # Save to temporary file
-                    temp_logo = "temp_logo.png"
-                    img.save(temp_logo)
-                    
-                    # Add to Excel
-                    excel_img = XLImage(temp_logo)
-                    
-                    for ws in wb.worksheets:
-                        ws.add_image(excel_img, 'A1')
-                    
-                    # Clean up temp file
-                    try:
-                        os.remove(temp_logo)
-                    except:
-                        pass
-                        
-                except Exception as e:
-                    logger.warning(f"Could not add logo: {e}")
-                    # Continue without logo - don't crash
-            
-            # Save workbook
-            if output_path:
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-                wb.save(output_path)
-                return True
-            else:
-                # Save to bytes
-                excel_buffer = io.BytesIO()
-                wb.save(excel_buffer)
-                excel_buffer.seek(0)
-                return excel_buffer
+            # Save the workbook
+            self.wb.save(output_path)
+            logger.info(f"✅ Excel file created successfully: {output_path}")
+            return True
             
         except Exception as e:
-            logger.error(f"Excel export error: {e}")
-            logger.error(traceback.format_exc())
-            raise Exception(f"Excel export error: {str(e)}")
+            logger.error(f"❌ Export error: {str(e)}")
+            return False
     
-    @staticmethod
-    def get_valid_sheet_name(name: str) -> str:
-        """Get valid Excel sheet name"""
-        # Remove invalid characters
-        invalid_chars = ['\\', '/', '*', '?', ':', '[', ']']
-        for char in invalid_chars:
-            name = name.replace(char, '_')
+    def _place_table_in_template(self, df: pd.DataFrame, table_pos: TablePosition):
+        """Place a DataFrame at specified position in template"""
+        if df is None or df.empty:
+            logger.warning(f"⚠ No data for table: {table_pos.table_name}")
+            return
         
-        # Truncate if too long
-        if len(name) > 31:
-            name = name[:28] + "..."
+        # Get or create the sheet
+        if table_pos.sheet_name in self.wb.sheetnames:
+            self.ws = self.wb[table_pos.sheet_name]
+        else:
+            self.ws = self.wb.create_sheet(title=table_pos.sheet_name[:31])
         
-        # Ensure not empty
-        if not name.strip():
-            name = "Sheet"
+        # Use get_start_col_num() method - FIXED
+        start_col_num = table_pos.get_start_col_num()
         
-        return name[:31]  # Excel sheet name limit
+        # Write headers if specified
+        if table_pos.header_positions:
+            for header, cell_ref in table_pos.header_positions.items():
+                if header in df.columns:
+                    self.ws[cell_ref] = header
+        
+        # Write data starting from specified position
+        start_row = max(table_pos.start_row, 4)  # Minimum row 4 for safety
+        
+        # Write the dataframe
+        for i, (_, row) in enumerate(df.iterrows()):
+            for j, value in enumerate(row):
+                cell = self.ws.cell(row=start_row + i, column=start_col_num + j)
+                cell.value = value
+        
+        logger.info(f"📊 Placed table '{table_pos.table_name}' at {table_pos.sheet_name}!{table_pos.start_col}{start_row}")
     
-    @staticmethod
-    def add_table_to_sheet(ws, table_data: Dict, position_info: TablePosition):
-        """Add a table to Excel sheet at specified position WITH HEADER DATA"""
-        try:
-            # 1. Add header positions first (FIXED: Now actually writes data)
-            header_positions = position_info.header_positions
+    def _write_dataframe(self, df: pd.DataFrame, start_row: int = 1, write_headers: bool = True):
+        """Write DataFrame to current worksheet"""
+        if df is None or df.empty:
+            return
+        
+        # Write headers
+        if write_headers:
+            for col_idx, column_name in enumerate(df.columns, 1):
+                cell = self.ws.cell(row=start_row, column=col_idx)
+                cell.value = column_name
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
             
-            # Get first row of data for header values
-            header_data = {}
-            if table_data['data']:
-                first_row = table_data['data'][0]
-                # Try to map common header names to data columns
-                for header_name in header_positions.keys():
-                    # Try exact match
-                    if header_name in first_row:
-                        header_data[header_name] = first_row[header_name]
-                    # Try case-insensitive match
-                    else:
-                        header_name_lower = header_name.lower()
-                        for col_name, value in first_row.items():
-                            if col_name.lower() == header_name_lower:
-                                header_data[header_name] = value
-                                break
-                        else:
-                            # Try partial match
-                            for col_name, value in first_row.items():
-                                if header_name_lower in col_name.lower() or col_name.lower() in header_name_lower:
-                                    header_data[header_name] = value
-                                    break
-            
-            # Write headers to their positions
-            for header_name, cell_ref in header_positions.items():
-                try:
-                    # Get value from data or use header name
-                    value = header_data.get(header_name, header_name)
-                    ws[cell_ref] = str(value) if value is not None else header_name
-                    
-                    # Style the header
-                    ws[cell_ref].font = Font(bold=True, size=11)
-                    ws[cell_ref].fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
-                    
-                except Exception as e:
-                    logger.warning(f"Could not write header {header_name} to {cell_ref}: {e}")
-            
-            # 2. Add table title
-            title_row = position_info.start_row - 3
-            title_cell = f"{position_info.start_col}{title_row}"
-            ws[title_cell] = f"Data from {table_data['display_name']}"
-            ws[title_cell].font = Font(size=14, bold=True, color="366092")
-            ws.merge_cells(f"{title_cell}:{get_column_letter(position_info.get_start_col_num() + 5)}{title_row}")
-            ws[title_cell].alignment = Alignment(horizontal='center')
-            
-            # 3. Add column headers
-            start_row = position_info.start_row
-            start_col_num = position_info.get_start_col_num()
-            columns = table_data['columns']
-            
-            for col_idx, col_name in enumerate(columns):
-                cell = ws.cell(row=start_row, column=start_col_num + col_idx, value=col_name)
-                cell.font = Font(bold=True, size=10)
-                cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-                cell.alignment = Alignment(horizontal='center', vertical='center')
-                cell.border = Border(
-                    left=Side(style='thin', color='000000'),
-                    right=Side(style='thin', color='000000'),
-                    top=Side(style='thin', color='000000'),
-                    bottom=Side(style='thin', color='000000')
-                )
-            
-            # 4. Add data rows
-            data = table_data['data']
-            for row_idx, row_data in enumerate(data):
-                excel_row = start_row + 1 + row_idx
-                for col_idx, col_name in enumerate(columns):
-                    value = row_data.get(col_name, '')
-                    cell = ws.cell(row=excel_row, column=start_col_num + col_idx, value=value)
-                    
-                    # Add alternating row colors
-                    if row_idx % 2 == 0:
-                        cell.fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
-                    else:
-                        cell.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-                    
-                    # Add borders
-                    cell.border = Border(
-                        left=Side(style='thin', color='CCCCCC'),
-                        right=Side(style='thin', color='CCCCCC'),
-                        top=Side(style='thin', color='CCCCCC'),
-                        bottom=Side(style='thin', color='CCCCCC')
-                    )
-            
-            # 5. Auto-size columns
-            ExcelTableExporter.auto_size_columns(ws, start_col_num, len(columns), start_row, len(data))
-            
-            # 6. Freeze header row
-            ws.freeze_panes = ws.cell(row=start_row + 1, column=start_col_num)
-            
-            # 7. Add sheet info
-            info_row = start_row + len(data) + 3
-            ws.cell(row=info_row, column=start_col_num, value="Generated:").font = Font(bold=True)
-            ws.cell(row=info_row, column=start_col_num + 1, value=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            
-            ws.cell(row=info_row + 1, column=start_col_num, value="Total Rows:").font = Font(bold=True)
-            ws.cell(row=info_row + 1, column=start_col_num + 1, value=len(data))
-            
-            ws.cell(row=info_row + 2, column=start_col_num, value="Total Columns:").font = Font(bold=True)
-            ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
-            
-        except Exception as e:
-            logger.error(f"Error adding table to sheet: {e}")
-            raise
+            start_row += 1
+        
+        # Write data
+        for i, (_, row) in enumerate(df.iterrows()):
+            for j, value in enumerate(row, 1):
+                cell = self.ws.cell(row=start_row + i, column=j)
+                cell.value = value
+        
+        logger.info(f"📝 Wrote {len(df)} rows to sheet '{self.current_sheet}'")
     
-    @staticmethod
-    def auto_size_columns(ws, start_col: int, num_cols: int, start_row: int, num_rows: int):
-        """Auto-size columns with limits"""
-        for col_offset in range(num_cols):
-            col_idx = start_col + col_offset
-            max_length = 0
+    def _auto_adjust_columns(self, df: pd.DataFrame):
+        """Auto-adjust column widths based on content"""
+        if df is None or df.empty:
+            return
+        
+        # Calculate max width for each column
+        for col_idx, column in enumerate(df.columns, 1):
+            max_length = len(str(column))
             
-            # Check header
-            header_cell = ws.cell(row=start_row, column=col_idx)
-            if header_cell.value:
-                max_length = len(str(header_cell.value))
+            # Check data in column
+            for cell in df[column]:
+                if cell is not None:
+                    max_length = max(max_length, len(str(cell)))
             
-            # Check data (limit to first 100 rows for performance)
-            check_rows = min(100, num_rows)
-            for row_offset in range(check_rows):
-                cell = ws.cell(row=start_row + 1 + row_offset, column=col_idx)
-                if cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            
-            # Set width with limits
+            # Set column width (add some padding)
             adjusted_width = min(max_length + 2, 50)  # Max width 50
-            adjusted_width = max(adjusted_width, 8)   # Min width 8
-            
-            ws.column_dimensions[get_column_letter(col_idx)].width = adjusted_width
+            column_letter = get_column_letter(col_idx)
+            self.ws.column_dimensions[column_letter].width = adjusted_width
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+
+class DatabaseTableExporter:
+    """Main application class"""
     
-    @staticmethod
-    def add_summary_sheet(ws, tables_data: Dict, table_positions: Dict[str, TablePosition]):
-        """Add summary sheet with export details"""
-        ws.title = "Export Summary"
+    def __init__(self):
+        self.db_manager = None
+        self.exporter = ExcelExporter()
+        self.tables_data = {}
         
-        # Title
-        ws['A1'] = "MULTI-TABLE EXPORT SUMMARY"
-        ws['A1'].font = Font(size=18, bold=True, color="366092")
-        ws.merge_cells('A1:E1')
-        ws['A1'].alignment = Alignment(horizontal='center')
+    def connect_to_database(self, server: str, database: str, username: str, password: str) -> bool:
+        """Connect to SQL Server database"""
+        try:
+            self.db_manager = DatabaseManager()
+            success = self.db_manager.connect(server, database, username, password)
+            return success
+        except Exception as e:
+            logger.error(f"❌ Connection error: {e}")
+            return False
+    
+    def fetch_tables(self, table_names: List[str]) -> Dict[str, pd.DataFrame]:
+        """Fetch data from specified tables"""
+        if not self.db_manager or not self.db_manager.is_connected:
+            logger.error("❌ Not connected to database")
+            return {}
         
-        # Metadata
-        ws['A3'] = "Export Date:"
-        ws['B3'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        ws['A3'].font = Font(bold=True)
-        
-        ws['A4'] = "Total Tables:"
-        ws['B4'] = len([t for t in tables_data.values() if t.get('success', False)])
-        ws['A4'].font = Font(bold=True)
-        
-        # Table details header
-        ws['A6'] = "TABLE DETAILS"
-        ws['A6'].font = Font(size=14, bold=True, color="366092")
-        ws.merge_cells('A6:E6')
-        
-        # Column headers
-        headers = ["Table Name", "Sheet Name", "Start Position", "Rows Exported", "Total Rows", "Status"]
-        for col, header in enumerate(headers, start=1):
-            cell = ws.cell(row=8, column=col, value=header)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-            cell.alignment = Alignment(horizontal='center')
-            cell.border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
-        
-        # Table data
-        row = 9
-        success_count = 0
-        for table_name, table_data in tables_data.items():
-            if table_name in table_positions:
-                pos_info = table_positions[table_name]
+        try:
+            all_tables = {}
+            total_rows = 0
+            
+            for table_name in table_names:
+                logger.info(f"📋 Fetching data from table: {table_name}")
                 
-                ws.cell(row=row, column=1, value=table_name)
-                ws.cell(row=row, column=2, value=pos_info.sheet_name)
-                ws.cell(row=row, column=3, value=f"{pos_info.start_col}{pos_info.start_row}")
+                # Get column names first
+                columns = self.db_manager.get_column_names(table_name)
+                if not columns:
+                    logger.warning(f"⚠ No columns found for table: {table_name}")
+                    continue
                 
-                if table_data.get('success', False):
-                    ws.cell(row=row, column=4, value=table_data['row_count'])
-                    ws.cell(row=row, column=5, value=table_data.get('total_count', table_data['row_count']))
-                    ws.cell(row=row, column=6, value="✅ SUCCESS")
-                    success_count += 1
+                # Build query
+                columns_str = ", ".join([f"[{col}]" for col in columns])
+                query = f"SELECT {columns_str} FROM [{table_name}]"
+                
+                # Execute query
+                data = self.db_manager.query_data(query)
+                
+                if data:
+                    # Convert to DataFrame
+                    df = pd.DataFrame(data, columns=columns)
+                    all_tables[table_name] = df
+                    total_rows += len(df)
+                    logger.info(f"✅ Fetched {len(df)} rows from {table_name}")
                 else:
-                    ws.cell(row=row, column=4, value=0)
-                    ws.cell(row=row, column=5, value=0)
-                    ws.cell(row=row, column=6, value=f"❌ {table_data.get('error', 'Failed')}")
+                    logger.warning(f"⚠ No data found in table: {table_name}")
+            
+            logger.info(f"✅ Successfully fetched {len(all_tables)} tables ({total_rows} total rows)")
+            self.tables_data = all_tables
+            return all_tables
+            
+        except Exception as e:
+            logger.error(f"❌ Error fetching tables: {e}")
+            return {}
+    
+    def export_tables(self, output_path: str, template_path: Optional[str] = None,
+                     table_positions: Optional[List[TablePosition]] = None) -> bool:
+        """Export fetched tables to Excel"""
+        if not self.tables_data:
+            logger.warning("⚠ No data to export")
+            return False
+        
+        return self.exporter.export_to_excel(
+            self.tables_data,
+            output_path,
+            template_path,
+            table_positions
+        )
+    
+    def analyze_template(self, template_path: str) -> Dict[str, Dict[str, Any]]:
+        """Analyze an Excel template for headers and structure"""
+        if not os.path.exists(template_path):
+            logger.error(f"❌ Template file not found: {template_path}")
+            return {}
+        
+        try:
+            analyzer = ExcelTemplateAnalyzer()
+            analysis = analyzer.analyze_template(template_path)
+            
+            logger.info(f"✅ Template analysis complete. Found {len(analysis)} sheet(s) with headers:")
+            for sheet_name, info in analysis.items():
+                logger.info(f"   📊 {sheet_name}: {len(info.get('headers', []))} headers at row {info.get('header_row')}")
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Template analysis error: {e}")
+            return {}
+    
+    def generate_auto_mappings(self, template_path: str, confidence_threshold: float = 0.6) -> Dict[str, Dict[str, Any]]:
+        """Generate automatic mappings between template and database columns"""
+        if not self.db_manager or not self.db_manager.is_connected:
+            logger.error("❌ Not connected to database")
+            return {}
+        
+        try:
+            # Get all database columns from all tables
+            all_columns = []
+            table_names = self.db_manager.get_table_names()
+            
+            for table_name in table_names:
+                columns = self.db_manager.get_column_names(table_name)
+                all_columns.extend(columns)
+            
+            # Remove duplicates
+            all_columns = list(set(all_columns))
+            logger.info(f"📊 Found {len(all_columns)} unique database columns")
+            
+            # Analyze template and generate mappings
+            analyzer = ExcelTemplateAnalyzer()
+            result = analyzer.analyze_and_map_template(
+                template_path,
+                all_columns,
+                confidence_threshold
+            )
+            
+            # Log results
+            total_mappings = 0
+            total_unmapped = 0
+            
+            for sheet_name, sheet_info in result.items():
+                mappings = sheet_info.get('auto_mappings', {})
+                unmapped = sheet_info.get('unmapped_headers', [])
                 
-                row += 1
-        
-        # Summary stats
-        summary_row = row + 2
-        ws.cell(row=summary_row, column=1, value="EXPORT SUMMARY").font = Font(size=12, bold=True)
-        ws.merge_cells(f"A{summary_row}:E{summary_row}")
-        
-        ws.cell(row=summary_row + 1, column=1, value="Successful Tables:").font = Font(bold=True)
-        ws.cell(row=summary_row + 1, column=2, value=success_count)
-        
-        ws.cell(row=summary_row + 2, column=1, value="Failed Tables:").font = Font(bold=True)
-        ws.cell(row=summary_row + 2, column=2, value=len(tables_data) - success_count)
-        
-        # Auto-size columns
-        for col in range(1, 7):
-            ws.column_dimensions[get_column_letter(col)].width = 20
+                total_mappings += len(mappings)
+                total_unmapped += len(unmapped)
+                
+                logger.info(f"   📋 {sheet_name}: {len(mappings)} mapped, {len(unmapped)} unmapped headers")
+            
+            logger.info(f"✅ Auto-mapping complete: {total_mappings} total mappings, {total_unmapped} unmapped headers")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Auto-mapping error: {e}")
+            return {}
 
 # ============================================================================
-# MAIN APPLICATION (FIXED GUI)
+# GUI APPLICATION
 # ============================================================================
 
-class MultiTableExporterApp:
-    """Main Application - FIXED VERSION"""
+class TableExporterGUI:
+    """GUI for Database Table Exporter"""
     
     def __init__(self, root):
         self.root = root
-        self.root.title("Multi-Table Excel Exporter - Professional Edition")
-        self.root.geometry("1400x900")
+        self.root.title("Database Table Exporter")
+        self.root.geometry("900x700")
         
-        # Set minimum size
-        self.root.minsize(1200, 700)
-        
-        # Database connection
-        self.db = DatabaseManager()
-        self.exporter = ExcelTableExporter()
-        
-        # Variables
-        self.server_var = tk.StringVar(value="MAHESHWAGH\\WINCC")
-        self.database_var = tk.StringVar(value="VPI1")
-        
-        # Table selection
-        self.selected_tables = []
-        self.table_checkboxes = {}
-        
-        # Logo
-        self.logo_path = None
-        
-        # Data storage
-        self.tables_data = {}
-        self.table_positions = {}
-        
-        # Setup UI
+        self.exporter = DatabaseTableExporter()
         self.setup_ui()
         
-        # Load saved settings
-        self.load_settings()
-    
     def setup_ui(self):
-        """Setup the user interface - FIXED LAYOUT"""
-        # Configure ttk styles
-        self.setup_styles()
+        """Setup the user interface"""
+        # Create main notebook
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Create main container
-        main_container = ttk.Frame(self.root)
-        main_container.pack(fill='both', expand=True, padx=5, pady=5)
-        
-        # Create notebook for tabs
-        self.notebook = ttk.Notebook(main_container)
-        self.notebook.pack(fill='both', expand=True)
-        
-        # Create tabs
+        # Database Connection Tab
         self.setup_connection_tab()
-        self.setup_table_selection_tab()
-        self.setup_position_mapping_tab()
+        
+        # Table Selection Tab
+        self.setup_table_tab()
+        
+        # Template Tab
+        self.setup_template_tab()
+        
+        # Export Tab
         self.setup_export_tab()
         
+        # Log Tab
+        self.setup_log_tab()
+        
         # Status bar
-        self.status_bar = ttk.Label(self.root, text="🚀 Ready to connect to database", 
-                                   relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        # Bind tab change event
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-    
-    def setup_styles(self):
-        """Configure ttk styles"""
-        style = ttk.Style()
-        try:
-            style.theme_use('clam')
-        except:
-            pass
-        
-        # Configure colors
-        style.configure('Title.TLabel', font=('Segoe UI', 16, 'bold'), foreground='#2C3E50')
-        style.configure('Header.TLabel', font=('Segoe UI', 11, 'bold'), foreground='#34495E')
-        style.configure('Subheader.TLabel', font=('Segoe UI', 10), foreground='#7F8C8D')
-        
-        # Configure buttons
-        style.configure('Accent.TButton', font=('Segoe UI', 10, 'bold'), 
-                       padding=8, background='#3498DB', foreground='white')
-        style.map('Accent.TButton',
-                 background=[('active', '#2980B9')])
-        
-        style.configure('Success.TButton', font=('Segoe UI', 10, 'bold'),
-                       padding=8, background='#27AE60', foreground='white')
-        
-        style.configure('Warning.TButton', font=('Segoe UI', 10, 'bold'),
-                       padding=8, background='#F39C12', foreground='white')
-        
-        # Configure frames
-        style.configure('Card.TFrame', background='white', relief='solid', borderwidth=1)
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
     
     def setup_connection_tab(self):
-        """Setup Connection Tab - FIXED LAYOUT"""
-        conn_tab = ttk.Frame(self.notebook)
-        self.notebook.add(conn_tab, text="🔌 Connection")
+        """Setup database connection tab"""
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text="Database Connection")
         
-        # Main frame with padding
-        main_frame = ttk.Frame(conn_tab, padding="30")
-        main_frame.pack(fill='both', expand=True)
+        # Connection form
+        form_frame = ttk.LabelFrame(frame, text="Database Settings", padding=10)
+        form_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Title
-        title_frame = ttk.Frame(main_frame)
-        title_frame.pack(fill='x', pady=(0, 30))
+        ttk.Label(form_frame, text="Server:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.server_entry = ttk.Entry(form_frame, width=40)
+        self.server_entry.grid(row=0, column=1, padx=5, pady=5)
         
-        ttk.Label(title_frame, text="Database Connection", style='Title.TLabel').pack()
-        ttk.Label(title_frame, text="Connect to your SQL Server database to access tables", 
-                 style='Subheader.TLabel').pack()
+        ttk.Label(form_frame, text="Database:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.database_entry = ttk.Entry(form_frame, width=40)
+        self.database_entry.grid(row=1, column=1, padx=5, pady=5)
         
-        # Connection card
-        card = ttk.LabelFrame(main_frame, text="Connection Settings", padding="25")
-        card.pack(fill='both', expand=True)
+        ttk.Label(form_frame, text="Username:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        self.username_entry = ttk.Entry(form_frame, width=40)
+        self.username_entry.grid(row=2, column=1, padx=5, pady=5)
         
-        # Server
-        server_frame = ttk.Frame(card)
-        server_frame.pack(fill='x', pady=(0, 15))
-        
-        ttk.Label(server_frame, text="Server:", font=('Segoe UI', 11, 'bold'), 
-                 width=15, anchor='w').pack(side=tk.LEFT)
-        server_entry = ttk.Entry(server_frame, textvariable=self.server_var, font=('Segoe UI', 10))
-        server_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=(10, 0))
-        
-        # Database
-        db_frame = ttk.Frame(card)
-        db_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(db_frame, text="Database:", font=('Segoe UI', 11, 'bold'), 
-                 width=15, anchor='w').pack(side=tk.LEFT)
-        db_entry = ttk.Entry(db_frame, textvariable=self.database_var, font=('Segoe UI', 10))
-        db_entry.pack(side=tk.LEFT, fill='x', expand=True, padx=(10, 0))
+        ttk.Label(form_frame, text="Password:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        self.password_entry = ttk.Entry(form_frame, width=40, show="*")
+        self.password_entry.grid(row=3, column=1, padx=5, pady=5)
         
         # Connection buttons
-        btn_frame = ttk.Frame(card)
-        btn_frame.pack(fill='x', pady=(0, 30))
+        button_frame = ttk.Frame(form_frame)
+        button_frame.grid(row=4, column=0, columnspan=2, pady=10)
         
-        self.connect_btn = ttk.Button(btn_frame, text="🔗 Connect to Database", 
-                                     command=self.connect_db, style='Accent.TButton', width=20)
-        self.connect_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.connect_btn = ttk.Button(button_frame, text="Connect", command=self.connect_database)
+        self.connect_btn.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(btn_frame, text="🧪 Test Connection", 
-                  command=self.test_connection, width=15).pack(side=tk.LEFT, padx=10)
+        self.test_btn = ttk.Button(button_frame, text="Test Connection", command=self.test_connection)
+        self.test_btn.pack(side=tk.LEFT, padx=5)
         
-        ttk.Button(btn_frame, text="🔄 Refresh", 
-                  command=self.refresh_tables, width=15).pack(side=tk.LEFT, padx=10)
-        
-        # Status display
-        status_frame = ttk.LabelFrame(card, text="Connection Status", padding="15")
-        status_frame.pack(fill='x', pady=(0, 20))
-        
-        self.status_label = ttk.Label(status_frame, text="🔴 Not connected", 
-                                     font=('Segoe UI', 10), foreground='red')
-        self.status_label.pack(anchor='w')
-        
-        self.server_info_label = ttk.Label(status_frame, text="", font=('Segoe UI', 9))
-        self.server_info_label.pack(anchor='w')
-        
-        # Quick guide
-        guide_frame = ttk.LabelFrame(card, text="Quick Start Guide", padding="15")
-        guide_frame.pack(fill='x')
-        
-        steps = [
-            "1. Enter your SQL Server details above",
-            "2. Click 'Connect to Database'",
-            "3. Go to 'Table Selection' tab to choose tables",
-            "4. Map tables to Excel positions in next tab",
-            "5. Export all tables to Excel with one click"
-        ]
-        
-        for step in steps:
-            ttk.Label(guide_frame, text=step, font=('Segoe UI', 9)).pack(anchor='w', pady=2)
+        # Connection status
+        self.connection_status = ttk.Label(form_frame, text="Not connected", foreground="red")
+        self.connection_status.grid(row=5, column=0, columnspan=2, pady=5)
     
-    def setup_table_selection_tab(self):
-        """Setup Table Selection Tab - FIXED LAYOUT"""
-        selection_tab = ttk.Frame(self.notebook)
-        self.notebook.add(selection_tab, text="📋 Table Selection")
+    def setup_table_tab(self):
+        """Setup table selection tab"""
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text="Table Selection")
         
-        # Main frame
-        main_frame = ttk.Frame(selection_tab, padding="20")
-        main_frame.pack(fill='both', expand=True)
+        # Available tables
+        available_frame = ttk.LabelFrame(frame, text="Available Tables", padding=10)
+        available_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Title
-        title_frame = ttk.Frame(main_frame)
-        title_frame.pack(fill='x', pady=(0, 20))
+        # Treeview for tables
+        self.table_tree = ttk.Treeview(available_frame, columns=("Rows", "Columns"), show="tree headings", height=15)
+        self.table_tree.heading("#0", text="Table Name")
+        self.table_tree.heading("Rows", text="Rows")
+        self.table_tree.heading("Columns", text="Columns")
         
-        ttk.Label(title_frame, text="Select Tables for Export", style='Title.TLabel').pack()
-        ttk.Label(title_frame, text="Choose which database tables to export to Excel", 
-                 style='Subheader.TLabel').pack()
+        self.table_tree.column("#0", width=200)
+        self.table_tree.column("Rows", width=80)
+        self.table_tree.column("Columns", width=80)
         
-        # Control panel
-        control_frame = ttk.LabelFrame(main_frame, text="Selection Controls", padding="15")
-        control_frame.pack(fill='x', pady=(0, 20))
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(available_frame, orient=tk.VERTICAL, command=self.table_tree.yview)
+        self.table_tree.configure(yscrollcommand=scrollbar.set)
         
-        btn_frame = ttk.Frame(control_frame)
-        btn_frame.pack()
+        self.table_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        buttons = [
-            ("Select All", self.select_all_tables, 'Accent.TButton'),
-            ("Clear All", self.clear_all_tables, None),
-            ("Invert Selection", self.invert_selection, None),
-            ("Refresh List", self.refresh_tables, None)
-        ]
+        # Selected tables
+        selected_frame = ttk.LabelFrame(frame, text="Selected Tables", padding=10)
+        selected_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        for text, command, style_name in buttons:
-            btn = ttk.Button(btn_frame, text=text, command=command, width=15)
-            if style_name:
-                btn.configure(style=style_name)
-            btn.pack(side=tk.LEFT, padx=5)
+        # Listbox for selected tables
+        self.selected_listbox = tk.Listbox(selected_frame, height=15)
+        scrollbar2 = ttk.Scrollbar(selected_frame, orient=tk.VERTICAL, command=self.selected_listbox.yview)
+        self.selected_listbox.configure(yscrollcommand=scrollbar2.set)
         
-        # Selected count
-        self.selected_count_label = ttk.Label(control_frame, 
-                                             text="0 tables selected",
-                                             font=('Segoe UI', 10, 'bold'),
-                                             foreground='#27AE60')
-        self.selected_count_label.pack(pady=(10, 0))
+        self.selected_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar2.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Table selection frame with scrollbar
-        table_container = ttk.Frame(main_frame)
-        table_container.pack(fill='both', expand=True)
+        # Control buttons
+        control_frame = ttk.Frame(available_frame)
+        control_frame.pack(fill=tk.X, pady=5)
         
-        # Create canvas with scrollbar
-        canvas = tk.Canvas(table_container, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(table_container, orient="vertical", command=canvas.yview)
-        self.checkbox_container = ttk.Frame(canvas)
+        ttk.Button(control_frame, text="Refresh Tables", command=self.refresh_tables).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Add Selected", command=self.add_selected_table).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Remove Selected", command=self.remove_selected_table).pack(side=tk.LEFT, padx=5)
         
-        canvas.pack(side=tk.LEFT, fill='both', expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill='y')
+        # Fetch button
+        fetch_frame = ttk.Frame(frame)
+        fetch_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.create_window((0, 0), window=self.checkbox_container, anchor="nw")
-        
-        # Configure scrolling
-        self.checkbox_container.bind("<Configure>", 
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        
-        # Bind mouse wheel
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        self.fetch_btn = ttk.Button(fetch_frame, text="Fetch Selected Tables", command=self.fetch_selected_tables, state=tk.DISABLED)
+        self.fetch_btn.pack(side=tk.RIGHT, padx=5)
     
-    def setup_position_mapping_tab(self):
-        """Setup Position Mapping Tab - FIXED LAYOUT"""
-        mapping_tab = ttk.Frame(self.notebook)
-        self.notebook.add(mapping_tab, text="🗺️ Position Mapping")
+    def setup_template_tab(self):
+        """Setup template configuration tab"""
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text="Template")
         
-        # Main frame
-        main_frame = ttk.Frame(mapping_tab, padding="20")
-        main_frame.pack(fill='both', expand=True)
+        # Template file selection
+        file_frame = ttk.LabelFrame(frame, text="Template File", padding=10)
+        file_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Title
-        title_frame = ttk.Frame(main_frame)
-        title_frame.pack(fill='x', pady=(0, 20))
+        ttk.Label(file_frame, text="Template Path:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.template_entry = ttk.Entry(file_frame, width=40)
+        self.template_entry.grid(row=0, column=1, padx=5, pady=5)
         
-        ttk.Label(title_frame, text="Configure Excel Positions", style='Title.TLabel').pack()
-        ttk.Label(title_frame, text="Set where each table should appear in Excel", 
-                 style='Subheader.TLabel').pack()
+        ttk.Button(file_frame, text="Browse...", command=self.browse_template).grid(row=0, column=2, padx=5)
         
-        # Instructions
-        instr_frame = ttk.LabelFrame(main_frame, text="📚 Instructions", padding="15")
-        instr_frame.pack(fill='x', pady=(0, 20))
+        # Template analysis
+        analysis_frame = ttk.LabelFrame(frame, text="Template Analysis", padding=10)
+        analysis_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        instructions = [
-            "• Each table will be placed on a SEPARATE sheet",
-            "• Set START ROW where data begins (e.g., 16 for row 16)",
-            "• Set START COLUMN where data begins (e.g., A for column A)",
-            "• Configure HEADER positions for common fields (optional)",
-            "• Use 'Configure Table Positions' button below to begin"
-        ]
+        self.analyze_btn = ttk.Button(analysis_frame, text="Analyze Template", command=self.analyze_template)
+        self.analyze_btn.pack(anchor=tk.W, pady=5)
         
-        for instr in instructions:
-            ttk.Label(instr_frame, text=instr, font=('Segoe UI', 9)).pack(anchor='w', pady=2)
-        
-        # Configuration button
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(pady=10)
-        
-        self.map_btn = ttk.Button(btn_frame, text="⚙️ Configure Table Positions", 
-                                 command=self.configure_positions, 
-                                 style='Accent.TButton', width=25, state='disabled')
-        self.map_btn.pack()
-        
-        # Current mappings display
-        mapping_frame = ttk.LabelFrame(main_frame, text="Current Position Mappings", padding="15")
-        mapping_frame.pack(fill='both', expand=True, pady=(20, 0))
-        
-        self.mapping_text = scrolledtext.ScrolledText(mapping_frame, height=15, wrap=tk.WORD,
-                                                     font=('Consolas', 9))
-        self.mapping_text.pack(fill='both', expand=True)
-        
-        # Initial message
-        self.mapping_text.insert(1.0, 
-            "No table positions configured yet.\n\n"
-            "1. First, select tables in the 'Table Selection' tab\n"
-            "2. Then click 'Configure Table Positions' button above\n"
-            "3. Set starting positions and header mappings for each table\n"
-            "4. Apply the mappings to continue")
-        self.mapping_text.config(state='disabled')
+        # Analysis results
+        self.analysis_text = scrolledtext.ScrolledText(analysis_frame, height=10)
+        self.analysis_text.pack(fill=tk.BOTH, expand=True)
     
     def setup_export_tab(self):
-        """Setup Export Tab - FIXED LAYOUT"""
-        export_tab = ttk.Frame(self.notebook)
-        self.notebook.add(export_tab, text="💾 Export")
+        """Setup export configuration tab"""
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text="Export")
         
-        # Main frame
-        main_frame = ttk.Frame(export_tab, padding="20")
-        main_frame.pack(fill='both', expand=True)
+        # Export settings
+        settings_frame = ttk.LabelFrame(frame, text="Export Settings", padding=10)
+        settings_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Title
-        title_frame = ttk.Frame(main_frame)
-        title_frame.pack(fill='x', pady=(0, 20))
+        ttk.Label(settings_frame, text="Output File:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.output_entry = ttk.Entry(settings_frame, width=40)
+        self.output_entry.grid(row=0, column=1, padx=5, pady=5)
         
-        ttk.Label(title_frame, text="Export to Excel", style='Title.TLabel').pack()
-        ttk.Label(title_frame, text="Export all selected tables to Excel with configured positions", 
-                 style='Subheader.TLabel').pack()
+        ttk.Button(settings_frame, text="Browse...", command=self.browse_output).grid(row=0, column=2, padx=5)
         
-        # Export settings card
-        settings_card = ttk.LabelFrame(main_frame, text="Export Settings", padding="25")
-        settings_card.pack(fill='both', expand=True)
-        
-        # Logo section
-        logo_frame = ttk.Frame(settings_card)
-        logo_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(logo_frame, text="Company Logo:", font=('Segoe UI', 11, 'bold'), 
-                 width=15, anchor='w').pack(side=tk.LEFT)
-        
-        logo_btn_frame = ttk.Frame(logo_frame)
-        logo_btn_frame.pack(side=tk.LEFT, padx=(10, 0))
-        
-        ttk.Button(logo_btn_frame, text="🖼️ Upload Logo", 
-                  command=self.upload_logo, width=15).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(logo_btn_frame, text="🗑️ Remove", 
-                  command=self.remove_logo, width=10).pack(side=tk.LEFT)
-        
-        self.logo_label = ttk.Label(logo_frame, text="No logo selected", 
-                                   font=('Segoe UI', 9), foreground='gray')
-        self.logo_label.pack(side=tk.LEFT, padx=(20, 0))
+        # Auto-generate filename
+        self.auto_name_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(settings_frame, text="Auto-generate filename", variable=self.auto_name_var).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=5)
         
         # Export options
-        options_frame = ttk.Frame(settings_card)
-        options_frame.pack(fill='x', pady=(0, 30))
+        options_frame = ttk.LabelFrame(frame, text="Export Options", padding=10)
+        options_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        # Row limit
-        limit_frame = ttk.Frame(options_frame)
-        limit_frame.pack(anchor='w', pady=(0, 10))
+        self.use_template_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(options_frame, text="Use Template", variable=self.use_template_var,
+                       command=self.toggle_template_options).grid(row=0, column=0, sticky=tk.W, pady=5)
         
-        ttk.Label(limit_frame, text="Rows per table:", font=('Segoe UI', 10)).pack(side=tk.LEFT, padx=(0, 10))
-        self.row_limit_var = tk.StringVar(value="1000")
-        ttk.Entry(limit_frame, textvariable=self.row_limit_var, width=10).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Label(limit_frame, text="(0 = all rows)").pack(side=tk.LEFT)
+        # Export button
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        # Checkboxes
-        check_frame = ttk.Frame(options_frame)
-        check_frame.pack(anchor='w')
+        self.export_btn = ttk.Button(button_frame, text="Export to Excel", command=self.export_data, state=tk.DISABLED)
+        self.export_btn.pack(side=tk.RIGHT, padx=5)
         
-        self.include_summary_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(check_frame, text="Include Summary Sheet", 
-                       variable=self.include_summary_var).pack(side=tk.LEFT, padx=(0, 20))
-        
-        self.auto_size_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(check_frame, text="Auto-size Columns", 
-                       variable=self.auto_size_var).pack(side=tk.LEFT)
-        
-        # Export buttons
-        export_btn_frame = ttk.Frame(settings_card)
-        export_btn_frame.pack(fill='x', pady=(0, 20))
-        
-        self.export_btn = ttk.Button(export_btn_frame, text="🚀 Export All Tables to Excel", 
-                                    command=self.export_to_excel, 
-                                    style='Success.TButton', width=25, state='disabled')
-        self.export_btn.pack(pady=(0, 10))
-        
-        ttk.Button(export_btn_frame, text="👁️ Export Preview (10 rows per table)", 
-                  command=self.export_preview, width=25).pack()
-        
-        # Export log
-        log_frame = ttk.LabelFrame(settings_card, text="Export Log", padding="15")
-        log_frame.pack(fill='both', expand=True)
-        
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, wrap=tk.WORD,
-                                                 font=('Consolas', 9))
-        self.log_text.pack(fill='both', expand=True)
-        
-        # Configure log tags
-        self.log_text.tag_configure('success', foreground='#27AE60', font=('Consolas', 9, 'bold'))
-        self.log_text.tag_configure('error', foreground='#E74C3C', font=('Consolas', 9, 'bold'))
-        self.log_text.tag_configure('info', foreground='#3498DB', font=('Consolas', 9))
-        self.log_text.tag_configure('warning', foreground='#F39C12', font=('Consolas', 9))
-        
-        # Initial log message
-        self.log_message("📋 Ready for export. Configure table positions first.", 'info')
+        # Preview button
+        self.preview_btn = ttk.Button(button_frame, text="Preview Data", command=self.preview_data, state=tk.DISABLED)
+        self.preview_btn.pack(side=tk.RIGHT, padx=5)
     
-    def on_tab_changed(self, event):
-        """Handle tab change event"""
-        current_tab = self.notebook.index(self.notebook.select())
-        tab_names = ["Connection", "Table Selection", "Position Mapping", "Export"]
+    def setup_log_tab(self):
+        """Setup log viewer tab"""
+        frame = ttk.Frame(self.notebook)
+        self.notebook.add(frame, text="Log")
         
-        if current_tab < len(tab_names):
-            self.status_bar.config(text=f"📌 Current tab: {tab_names[current_tab]}")
-    
-    # ============================================================================
-    # DATABASE METHODS
-    # ============================================================================
-    
-    def connect_db(self):
-        """Connect to database"""
-        def connect():
-            self.status_bar.config(text="🔗 Connecting to database...")
-            self.status_label.config(text="🟡 Connecting...", foreground='orange')
-            
-            try:
-                success, message = self.db.connect(
-                    server=self.server_var.get(),
-                    database=self.database_var.get(),
-                    use_windows_auth=True
-                )
+        self.log_text = scrolledtext.ScrolledText(frame, wrap=tk.WORD, height=20)
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Clear log button
+        ttk.Button(frame, text="Clear Log", command=self.clear_log).pack(anchor=tk.E, padx=5, pady=5)
+        
+        # Redirect logging to the text widget
+        class TextHandler(logging.Handler):
+            def __init__(self, text_widget):
+                super().__init__()
+                self.text_widget = text_widget
                 
-                if success:
-                    self.status_label.config(text="🟢 Connected", foreground='green')
-                    self.server_info_label.config(
-                        text=f"Connected to: {self.db.server_info.get('server', 'Unknown')}")
-                    self.status_bar.config(text="✅ Connected successfully")
-                    self.log_message("✅ Database connected successfully", 'success')
-                    self.refresh_tables()
-                else:
-                    self.status_label.config(text="🔴 Connection Failed", foreground='red')
-                    self.status_bar.config(text=f"❌ Connection failed: {message}")
-                    self.log_message(f"❌ Connection failed: {message}", 'error')
-                    messagebox.showerror("Connection Error", message)
-                    
-            except Exception as e:
-                self.status_label.config(text="🔴 Connection Error", foreground='red')
-                self.status_bar.config(text=f"❌ Error: {str(e)}")
-                self.log_message(f"❌ Connection error: {str(e)}", 'error')
-                messagebox.showerror("Connection Error", f"Error during connection:\n{str(e)}")
+            def emit(self, record):
+                msg = self.format(record)
+                self.text_widget.insert(tk.END, msg + '\n')
+                self.text_widget.see(tk.END)
         
-        threading.Thread(target=connect, daemon=True).start()
+        text_handler = TextHandler(self.log_text)
+        text_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(text_handler)
     
-    def disconnect_db(self):
-        """Disconnect from database"""
-        try:
-            self.db.disconnect()
-            self.status_label.config(text="🔴 Disconnected", foreground='red')
-            self.server_info_label.config(text="")
-            self.status_bar.config(text="🔌 Disconnected")
-            self.log_message("🔌 Disconnected from database", 'info')
+    # Event handlers
+    def connect_database(self):
+        """Connect to database"""
+        server = self.server_entry.get()
+        database = self.database_entry.get()
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        
+        if not all([server, database, username, password]):
+            messagebox.showerror("Error", "Please fill all database connection fields")
+            return
+        
+        self.status_var.set("Connecting to database...")
+        self.connect_btn.config(state=tk.DISABLED)
+        
+        # Run in thread to avoid freezing UI
+        def connect_thread():
+            success = self.exporter.connect_to_database(server, database, username, password)
             
-            # Clear tables
-            self.clear_table_checkboxes()
-            self.selected_tables.clear()
-            self.selected_count_label.config(text="0 tables selected")
-            
-        except Exception as e:
-            self.log_message(f"❌ Error during disconnect: {str(e)}", 'error')
+            self.root.after(0, lambda: self._on_connection_result(success))
+        
+        threading.Thread(target=connect_thread, daemon=True).start()
+    
+    def _on_connection_result(self, success: bool):
+        """Handle connection result"""
+        if success:
+            self.connection_status.config(text="Connected", foreground="green")
+            self.status_var.set("Connected to database")
+            self.refresh_tables()
+        else:
+            self.connection_status.config(text="Connection failed", foreground="red")
+            self.status_var.set("Connection failed")
+        
+        self.connect_btn.config(state=tk.NORMAL)
     
     def test_connection(self):
         """Test database connection"""
-        def test():
-            self.status_bar.config(text="🧪 Testing connection...")
-            
-            try:
-                success, message = self.db.connect(
-                    server=self.server_var.get(),
-                    database=self.database_var.get(),
-                    use_windows_auth=True
-                )
-                
-                if success:
-                    self.status_bar.config(text="✅ Connection test successful")
-                    self.db.disconnect()
-                    messagebox.showinfo("Connection Test", "✅ Connection successful!")
-                else:
-                    self.status_bar.config(text="❌ Connection test failed")
-                    messagebox.showerror("Connection Test", f"❌ Connection failed:\n{message}")
-                    
-            except Exception as e:
-                self.status_bar.config(text=f"❌ Error: {str(e)}")
-                messagebox.showerror("Connection Test", f"❌ Error during connection test:\n{str(e)}")
-        
-        threading.Thread(target=test, daemon=True).start()
+        self.connect_database()
     
     def refresh_tables(self):
-        """Refresh list of tables"""
-        if not self.db.connected:
-            messagebox.showwarning("Not Connected", "Please connect to database first")
+        """Refresh list of available tables"""
+        if not self.exporter.db_manager or not self.exporter.db_manager.is_connected:
+            messagebox.showwarning("Warning", "Not connected to database")
             return
         
-        def refresh():
-            self.status_bar.config(text="📊 Loading tables...")
-            
-            try:
-                tables = self.db.get_tables()
-                self.create_table_checkboxes(tables)
-                
-                self.status_bar.config(text=f"✅ Loaded {len(tables)} tables")
-                self.log_message(f"✅ Loaded {len(tables)} tables", 'success')
-                
-            except Exception as e:
-                self.status_bar.config(text=f"❌ Error loading tables: {str(e)}")
-                self.log_message(f"❌ Error loading tables: {str(e)}", 'error')
+        self.status_var.set("Refreshing table list...")
         
-        threading.Thread(target=refresh, daemon=True).start()
-    
-    def create_table_checkboxes(self, tables: List[str]):
-        """Create checkboxes for table selection"""
-        # Clear existing checkboxes
-        self.clear_table_checkboxes()
-        self.table_checkboxes.clear()
+        # Clear existing items
+        for item in self.table_tree.get_children():
+            self.table_tree.delete(item)
         
-        # Create new checkboxes in 3 columns for better layout
-        for i, table in enumerate(tables):
-            var = tk.BooleanVar(value=False)
-            self.table_checkboxes[table] = var
-            
-            # Create checkbox with better styling
-            cb_frame = ttk.Frame(self.checkbox_container)
-            cb_frame.grid(row=i//3, column=i%3, sticky=tk.W, padx=15, pady=5)
-            
-            cb = ttk.Checkbutton(cb_frame, text=table, variable=var,
-                                command=self.update_selected_count)
-            cb.pack(anchor='w')
-            
-            # Add tooltip for full name
-            if len(table) > 40:
-                cb_frame.tooltip_text = table
+        # Get table names
+        tables = self.exporter.db_manager.get_table_names()
         
-        # Update count
-        self.update_selected_count()
-    
-    def clear_table_checkboxes(self):
-        """Clear all table checkboxes"""
-        for widget in self.checkbox_container.winfo_children():
-            widget.destroy()
-    
-    def select_all_tables(self):
-        """Select all tables"""
-        for var in self.table_checkboxes.values():
-            var.set(True)
-        self.update_selected_count()
-        self.log_message("✅ Selected all tables", 'info')
-    
-    def clear_all_tables(self):
-        """Clear all table selections"""
-        for var in self.table_checkboxes.values():
-            var.set(False)
-        self.update_selected_count()
-        self.log_message("🗑️ Cleared all table selections", 'info')
-    
-    def invert_selection(self):
-        """Invert table selection"""
-        for var in self.table_checkboxes.values():
-            var.set(not var.get())
-        self.update_selected_count()
-        self.log_message("🔄 Inverted table selection", 'info')
-    
-    def update_selected_count(self):
-        """Update selected tables count"""
-        self.selected_tables = [table for table, var in self.table_checkboxes.items() if var.get()]
-        count = len(self.selected_tables)
-        self.selected_count_label.config(text=f"{count} table{'s' if count != 1 else ''} selected")
+        # Add tables to treeview (without row/column counts initially)
+        for table in tables:
+            self.table_tree.insert("", tk.END, text=table, values=("?", "?"))
         
-        # Enable/disable buttons based on selection
-        if count > 0:
-            self.map_btn.config(state='normal')
-            self.export_btn.config(state='normal')
-        else:
-            self.map_btn.config(state='disabled')
-            self.export_btn.config(state='disabled')
+        self.status_var.set(f"Found {len(tables)} tables")
     
-    # ============================================================================
-    # POSITION MAPPING METHODS
-    # ============================================================================
-    
-    def configure_positions(self):
-        """Configure table positions"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
+    def add_selected_table(self):
+        """Add selected table to list"""
+        selection = self.table_tree.selection()
+        if not selection:
             return
         
-        # Open position mapping dialog
-        dialog = TablePositionDialog(self.root, self.selected_tables)
+        for item in selection:
+            table_name = self.table_tree.item(item, "text")
+            if table_name not in self.selected_listbox.get(0, tk.END):
+                self.selected_listbox.insert(tk.END, table_name)
         
-        # Wait for dialog to close
-        self.root.wait_window(dialog.dialog)
-        
-        # Get mapping result
-        positions = dialog.get_positions()
-        if positions:
-            self.table_positions = positions
-            self.update_mapping_display()
-            self.export_btn.config(state='normal')
-            self.log_message("✅ Table positions configured", 'success')
-            self.log_message(f"📊 Configured {len(positions)} tables", 'info')
-            
-            # Show summary
-            messagebox.showinfo("Positions Applied", 
-                              f"✅ Table positions configured successfully!\n\n"
-                              f"📋 Tables configured: {len(positions)}\n"
-                              f"📄 Each table will be on a separate sheet\n"
-                              f"📍 Data starts at specified positions")
+        self.fetch_btn.config(state=tk.NORMAL)
     
-    def update_mapping_display(self):
-        """Update position mapping display"""
-        self.mapping_text.config(state='normal')
-        self.mapping_text.delete(1.0, tk.END)
+    def remove_selected_table(self):
+        """Remove selected table from list"""
+        selection = self.selected_listbox.curselection()
+        if not selection:
+            return
         
-        if not self.table_positions:
-            self.mapping_text.insert(1.0, 
-                "No table positions configured.\n\n"
-                "1. First, select tables in the 'Table Selection' tab\n"
-                "2. Then click 'Configure Table Positions' button above\n"
-                "3. Set starting positions and header mappings for each table\n"
-                "4. Apply the mappings to continue")
-        else:
-            # Add mapping information
-            self.mapping_text.insert(tk.END, "✅ TABLE POSITION MAPPINGS CONFIGURED\n")
-            self.mapping_text.insert(tk.END, "="*50 + "\n\n")
-            
-            for table_name, table_pos in self.table_positions.items():
-                display_name = self.db.get_display_name(table_name)
-                
-                self.mapping_text.insert(tk.END, f"📄 {display_name}\n", 'header')
-                self.mapping_text.insert(tk.END, f"   📍 Start: {table_pos.start_col}{table_pos.start_row}\n")
-                self.mapping_text.insert(tk.END, f"   📋 Sheet: {table_pos.sheet_name}\n")
-                
-                # Add header positions if any
-                if table_pos.header_positions:
-                    self.mapping_text.insert(tk.END, "   🏷️ Headers:\n")
-                    for header, pos in table_pos.header_positions.items():
-                        self.mapping_text.insert(tk.END, f"     • {header}: {pos}\n")
-                
-                self.mapping_text.insert(tk.END, "\n")
+        # Remove in reverse order to maintain correct indices
+        for index in reversed(selection):
+            self.selected_listbox.delete(index)
         
-        self.mapping_text.config(state='disabled')
+        if self.selected_listbox.size() == 0:
+            self.fetch_btn.config(state=tk.DISABLED)
     
-    # ============================================================================
-    # EXPORT METHODS
-    # ============================================================================
+    def fetch_selected_tables(self):
+        """Fetch data from selected tables"""
+        tables = list(self.selected_listbox.get(0, tk.END))
+        if not tables:
+            messagebox.showwarning("Warning", "No tables selected")
+            return
+        
+        self.status_var.set(f"Fetching {len(tables)} tables...")
+        self.fetch_btn.config(state=tk.DISABLED)
+        
+        def fetch_thread():
+            self.exporter.fetch_tables(tables)
+            self.root.after(0, self._on_fetch_complete)
+        
+        threading.Thread(target=fetch_thread, daemon=True).start()
     
-    def upload_logo(self):
-        """Upload company logo"""
-        filetypes = [("Image files", "*.png *.jpg *.jpeg"), ("All files", "*.*")]
+    def _on_fetch_complete(self):
+        """Handle fetch completion"""
+        self.status_var.set("Fetch complete")
+        self.fetch_btn.config(state=tk.NORMAL)
+        self.export_btn.config(state=tk.NORMAL)
+        self.preview_btn.config(state=tk.NORMAL)
+        
+        # Update table info in treeview
+        for table_name, df in self.exporter.tables_data.items():
+            for item in self.table_tree.get_children():
+                if self.table_tree.item(item, "text") == table_name:
+                    self.table_tree.set(item, "Rows", len(df))
+                    self.table_tree.set(item, "Columns", len(df.columns))
+                    break
+    
+    def browse_template(self):
+        """Browse for template file"""
         filename = filedialog.askopenfilename(
-            title="Select Company Logo", 
-            filetypes=filetypes
+            title="Select Template File",
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
         )
-        
         if filename:
-            try:
-                # Validate image
-                img = Image.open(filename)
-                img.verify()  # Verify it's a valid image
-                
-                self.logo_path = filename
-                self.logo_label.config(
-                    text=os.path.basename(filename), 
-                    foreground='green'
-                )
-                self.log_message(f"✅ Logo uploaded: {os.path.basename(filename)}", 'success')
-                
-            except Exception as e:
-                messagebox.showerror("Invalid Image", 
-                                   f"Failed to load image:\n{str(e)}\n\n"
-                                   "Please select a valid PNG or JPG file.")
+            self.template_entry.delete(0, tk.END)
+            self.template_entry.insert(0, filename)
     
-    def remove_logo(self):
-        """Remove uploaded logo"""
-        self.logo_path = None
-        self.logo_label.config(text="No logo selected", foreground='gray')
-        self.log_message("🗑️ Logo removed", 'info')
-    
-    def fetch_table_data(self):
-        """Fetch data for all selected tables"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
-            return False
-        
-        # Get row limit
-        try:
-            row_limit = int(self.row_limit_var.get())
-            if row_limit < 0:
-                row_limit = 0
-        except:
-            row_limit = 1000
-        
-        def fetch_all():
-            self.status_bar.config(text="📥 Fetching table data...")
-            self.log_message("📥 Fetching data for selected tables...", 'info')
-            
-            self.tables_data.clear()
-            success_count = 0
-            total_rows = 0
-            
-            for table in self.selected_tables:
-                self.status_bar.config(text=f"📥 Fetching {self.db.get_display_name(table)}...")
-                
-                try:
-                    data = self.db.fetch_table_data(table, limit=row_limit)
-                    self.tables_data[table] = data
-                    
-                    if data['success']:
-                        success_count += 1
-                        total_rows += data['row_count']
-                        self.log_message(f"✅ {self.db.get_display_name(table)}: {data['row_count']:,} rows", 'success')
-                    else:
-                        self.log_message(f"❌ {self.db.get_display_name(table)}: {data.get('error', 'Unknown error')}", 'error')
-                        
-                except Exception as e:
-                    self.tables_data[table] = {'success': False, 'error': str(e)}
-                    self.log_message(f"❌ {self.db.get_display_name(table)}: {str(e)}", 'error')
-            
-            self.status_bar.config(text=f"✅ Fetched {success_count} of {len(self.selected_tables)} tables ({total_rows:,} total rows)")
-            
-            if success_count > 0:
-                self.log_message(f"✅ Successfully fetched {success_count} tables ({total_rows:,} total rows)", 'success')
-                return True
-            else:
-                self.log_message("❌ Failed to fetch any tables", 'error')
-                return False
-        
-        # Run in thread
-        thread = threading.Thread(target=fetch_all, daemon=True)
-        thread.start()
-        thread.join(timeout=30)  # Wait up to 30 seconds
-        
-        return success_count > 0
-    
-    def export_to_excel(self):
-        """Export selected tables to Excel"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
-            return
-        
-        if not self.table_positions:
-            messagebox.showwarning("No Positions", "Please configure table positions first")
-            return
-        
-        # Ask for confirmation
-        response = messagebox.askyesno("Confirm Export", 
-                                      f"Export {len(self.selected_tables)} tables to Excel?\n\n"
-                                      f"This will:\n"
-                                      f"• Create a new Excel file\n"
-                                      f"• Put each table on a separate sheet\n"
-                                      f"• Use configured positions and headers\n"
-                                      f"• Add company logo (if provided)")
-        
-        if not response:
-            return
-        
-        # Generate filename
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"MultiTable_Export_{timestamp}.xlsx"
-        
-        file_path = filedialog.asksaveasfilename(
+    def browse_output(self):
+        """Browse for output file location"""
+        filename = filedialog.asksaveasfilename(
+            title="Save As",
             defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            initialfile=filename,
-            title="Save Excel File"
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
         )
-        
-        if not file_path:
+        if filename:
+            self.output_entry.delete(0, tk.END)
+            self.output_entry.insert(0, filename)
+            self.auto_name_var.set(False)
+    
+    def analyze_template(self):
+        """Analyze selected template"""
+        template_path = self.template_entry.get()
+        if not template_path or not os.path.exists(template_path):
+            messagebox.showerror("Error", "Template file not found")
             return
         
-        # Fetch data first
-        self.log_message("🔄 Starting data fetch...", 'info')
-        if not self.fetch_table_data():
-            messagebox.showerror("Export Failed", "Could not fetch data from database")
+        self.status_var.set("Analyzing template...")
+        self.analyze_btn.config(state=tk.DISABLED)
+        
+        def analyze_thread():
+            analysis = self.exporter.analyze_template(template_path)
+            self.root.after(0, lambda: self._on_analysis_complete(analysis))
+        
+        threading.Thread(target=analyze_thread, daemon=True).start()
+    
+    def _on_analysis_complete(self, analysis: Dict[str, Dict[str, Any]]):
+        """Handle template analysis completion"""
+        self.analyze_btn.config(state=tk.NORMAL)
+        
+        self.analysis_text.delete(1.0, tk.END)
+        
+        if not analysis:
+            self.analysis_text.insert(tk.END, "No headers detected in template")
             return
         
-        # Wait a moment for UI to update
-        self.root.after(1000, lambda: self.do_export(file_path))
-    
-    def do_export(self, file_path: str):
-        """Perform the export after data is fetched"""
-        def export():
-            self.status_bar.config(text="📤 Exporting to Excel...")
-            self.log_message("📤 Creating Excel file...", 'info')
+        self.analysis_text.insert(tk.END, f"Template Analysis Results:\n")
+        self.analysis_text.insert(tk.END, f"Found {len(analysis)} sheet(s) with headers:\n\n")
+        
+        for sheet_name, info in analysis.items():
+            self.analysis_text.insert(tk.END, f"Sheet: {sheet_name}\n")
+            self.analysis_text.insert(tk.END, f"  Header Row: {info.get('header_row')}\n")
+            self.analysis_text.insert(tk.END, f"  Headers: {len(info.get('headers', []))}\n")
             
-            try:
-                # Export tables to Excel
-                success = self.exporter.export_tables_to_excel(
-                    tables_data=self.tables_data,
-                    table_positions=self.table_positions,
-                    logo_path=self.logo_path,
-                    output_path=file_path
-                )
-                
-                if success:
-                    file_size = os.path.getsize(file_path) / 1024  # Size in KB
-                    
-                    self.status_bar.config(text=f"✅ Excel file created: {os.path.basename(file_path)}")
-                    self.log_message(f"✅ Excel file created successfully!", 'success')
-                    self.log_message(f"📁 File: {file_path}", 'info')
-                    self.log_message(f"📊 Size: {file_size:.1f} KB", 'info')
-                    
-                    # Count successful exports
-                    success_count = sum(1 for data in self.tables_data.values() 
-                                      if data.get('success', False))
-                    total_rows = sum(data.get('row_count', 0) 
-                                   for data in self.tables_data.values() 
-                                   if data.get('success', False))
-                    
-                    self.log_message(f"📋 Tables exported: {success_count}", 'info')
-                    self.log_message(f"📈 Total rows: {total_rows:,}", 'info')
-                    
-                    # Show success dialog
-                    self.root.after(0, lambda: self.show_export_success(
-                        file_path, success_count, total_rows, file_size))
-                    
-                else:
-                    self.status_bar.config(text="❌ Export failed")
-                    self.log_message("❌ Failed to create Excel file", 'error')
-                    
-            except Exception as e:
-                error_msg = str(e)
-                self.status_bar.config(text=f"❌ Export error: {error_msg}")
-                self.log_message(f"❌ Export error: {error_msg}", 'error')
-                logger.error(f"Export error: {traceback.format_exc()}")
-                
-                self.root.after(0, lambda: messagebox.showerror("Export Error", 
-                    f"Failed to create Excel file:\n{error_msg}"))
-        
-        threading.Thread(target=export, daemon=True).start()
-    
-    def export_preview(self):
-        """Export preview with limited rows"""
-        original_limit = self.row_limit_var.get()
-        self.row_limit_var.set("10")
-        self.export_to_excel()
-        self.row_limit_var.set(original_limit)
-    
-    def show_export_success(self, file_path: str, success_count: int, total_rows: int, file_size: float):
-        """Show export success dialog"""
-        file_name = os.path.basename(file_path)
-        file_dir = os.path.dirname(file_path)
-        
-        dialog = tk.Toplevel(self.root)
-        dialog.title("✅ Export Successful")
-        dialog.geometry("500x400")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        # Center dialog
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() - dialog.winfo_width()) // 2
-        y = (dialog.winfo_screenheight() - dialog.winfo_height()) // 2
-        dialog.geometry(f"+{x}+{y}")
-        
-        # Success message
-        ttk.Label(dialog, text="✅", font=('Arial', 32)).pack(pady=(20, 10))
-        ttk.Label(dialog, text="Excel File Created Successfully!", 
-                 font=('Segoe UI', 14, 'bold')).pack()
-        
-        # Stats
-        stats_frame = ttk.Frame(dialog, padding="20")
-        stats_frame.pack(fill='x')
-        
-        stats = [
-            ("File:", file_name),
-            ("Location:", file_dir),
-            ("Size:", f"{file_size:.1f} KB"),
-            ("Tables Exported:", f"{success_count}"),
-            ("Total Rows:", f"{total_rows:,}"),
-            ("Generated:", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        ]
-        
-        for label, value in stats:
-            row_frame = ttk.Frame(stats_frame)
-            row_frame.pack(fill='x', pady=2)
+            headers = info.get('headers', [])
+            for i, header in enumerate(headers[:10]):  # Show first 10 headers
+                self.analysis_text.insert(tk.END, f"    {i+1}. {header}\n")
             
-            ttk.Label(row_frame, text=label, font=('Segoe UI', 9, 'bold'), 
-                     width=15, anchor='w').pack(side=tk.LEFT)
-            ttk.Label(row_frame, text=value, font=('Segoe UI', 9)).pack(side=tk.LEFT)
+            if len(headers) > 10:
+                self.analysis_text.insert(tk.END, f"    ... and {len(headers) - 10} more\n")
+            
+            self.analysis_text.insert(tk.END, "\n")
         
-        # Buttons
-        btn_frame = ttk.Frame(dialog, padding="20")
-        btn_frame.pack(fill='x')
-        
-        ttk.Button(btn_frame, text="📂 Open File", 
-                  command=lambda: [os.startfile(file_path), dialog.destroy()],
-                  style='Accent.TButton', width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="📂 Open Folder", 
-                  command=lambda: [os.startfile(file_dir), dialog.destroy()],
-                  width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="OK", 
-                  command=dialog.destroy, width=10).pack(side=tk.RIGHT, padx=5)
+        self.status_var.set("Template analysis complete")
     
-    def log_message(self, message: str, message_type: str = 'info'):
-        """Add message to log"""
-        timestamp = datetime.now().strftime('%H:%M:%S')
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
-        
-        # Apply tag to the last line
-        start_index = self.log_text.index(f"end-{len(message.split(chr(10)))+1}c")
-        end_index = self.log_text.index("end-1c")
-        self.log_text.tag_add(message_type, start_index, end_index)
-        
-        self.log_text.see(tk.END)
+    def toggle_template_options(self):
+        """Toggle template-related options"""
+        use_template = self.use_template_var.get()
+        if use_template:
+            self.notebook.select(2)  # Switch to template tab
     
-    def load_settings(self):
-        """Load application settings"""
+    def export_data(self):
+        """Export data to Excel"""
+        output_path = self.output_entry.get()
+        
+        # Auto-generate filename if enabled
+        if self.auto_name_var.get() or not output_path:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_path = f"export_{timestamp}.xlsx"
+            self.output_entry.delete(0, tk.END)
+            self.output_entry.insert(0, output_path)
+        
+        # Check if we should use template
+        template_path = None
+        if self.use_template_var.get():
+            template_path = self.template_entry.get()
+            if not template_path or not os.path.exists(template_path):
+                messagebox.showwarning("Warning", "Template file not found. Exporting without template.")
+                template_path = None
+        
+        self.status_var.set("Exporting data...")
+        self.export_btn.config(state=tk.DISABLED)
+        
+        def export_thread():
+            success = self.exporter.export_tables(output_path, template_path)
+            self.root.after(0, lambda: self._on_export_complete(success, output_path))
+        
+        threading.Thread(target=export_thread, daemon=True).start()
+    
+    def _on_export_complete(self, success: bool, output_path: str):
+        """Handle export completion"""
+        self.export_btn.config(state=tk.NORMAL)
+        
+        if success:
+            self.status_var.set(f"Export complete: {output_path}")
+            
+            # Ask if user wants to open the file
+            response = messagebox.askyesno("Success", 
+                                         f"Export completed successfully!\n\nFile saved to:\n{output_path}\n\nOpen file now?")
+            if response:
+                self.open_file(output_path)
+        else:
+            self.status_var.set("Export failed")
+            messagebox.showerror("Error", "Export failed. Check log for details.")
+    
+    def preview_data(self):
+        """Preview fetched data"""
+        if not self.exporter.tables_data:
+            messagebox.showinfo("Info", "No data to preview. Fetch tables first.")
+            return
+        
+        # Create preview window
+        preview_window = tk.Toplevel(self.root)
+        preview_window.title("Data Preview")
+        preview_window.geometry("800x600")
+        
+        # Create notebook for tables
+        notebook = ttk.Notebook(preview_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        for table_name, df in self.exporter.tables_data.items():
+            frame = ttk.Frame(notebook)
+            notebook.add(frame, text=f"{table_name} ({len(df)} rows)")
+            
+            # Create treeview for this table
+            tree = ttk.Treeview(frame, columns=list(df.columns), show="headings")
+            
+            # Configure columns
+            for col in df.columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=100)
+            
+            # Add data (limit to 100 rows for performance)
+            for i, row in df.head(100).iterrows():
+                tree.insert("", tk.END, values=list(row))
+            
+            # Add scrollbar
+            scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+            
+            tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Show row count
+            ttk.Label(frame, text=f"Showing {min(100, len(df))} of {len(df)} rows").pack(side=tk.BOTTOM, pady=5)
+    
+    def open_file(self, filepath: str):
+        """Open a file with default application"""
         try:
-            if os.path.exists('table_exporter_settings.json'):
-                with open('table_exporter_settings.json', 'r') as f:
-                    settings = json.load(f)
-                
-                self.server_var.set(settings.get('server', 'MAHESHWAGH\\WINCC'))
-                self.database_var.set(settings.get('database', 'VPI1'))
-                self.row_limit_var.set(settings.get('row_limit', '1000'))
-                
-                logo_path = settings.get('logo_path')
-                if logo_path and os.path.exists(logo_path):
-                    self.logo_path = logo_path
-                    self.logo_label.config(
-                        text=os.path.basename(logo_path), 
-                        foreground='green'
-                    )
-                
-                self.log_message("✅ Settings loaded", 'info')
-                
+            if platform.system() == "Windows":
+                os.startfile(filepath)
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.run(["open", filepath])
+            else:  # Linux
+                subprocess.run(["xdg-open", filepath])
         except Exception as e:
-            self.log_message(f"Note: Could not load settings: {str(e)}", 'warning')
+            messagebox.showerror("Error", f"Could not open file: {str(e)}")
     
-    def save_settings(self):
-        """Save application settings"""
-        settings = {
-            'server': self.server_var.get(),
-            'database': self.database_var.get(),
-            'row_limit': self.row_limit_var.get(),
-            'logo_path': self.logo_path,
-            'last_save': datetime.now().isoformat()
-        }
-        
-        try:
-            with open('table_exporter_settings.json', 'w') as f:
-                json.dump(settings, f, indent=2)
-            
-            self.log_message("💾 Settings saved", 'info')
-            
-        except Exception as e:
-            self.log_message(f"❌ Failed to save settings: {str(e)}", 'error')
-    
-    def on_closing(self):
-        """Handle window closing"""
-        if messagebox.askokcancel("Quit", "Do you want to quit the application?"):
-            self.save_settings()
-            if self.db.connected:
-                self.db.disconnect()
-            self.root.destroy()
+    def clear_log(self):
+        """Clear log text widget"""
+        self.log_text.delete(1.0, tk.END)
 
 # ============================================================================
-# MAIN ENTRY POINT
+# DATABASE MANAGER (FIXED)
+# ============================================================================
+
+class DatabaseManager:
+    """Manages database connections and queries"""
+    
+    def __init__(self, connection_string: Optional[str] = None):
+        self.connection_string = connection_string
+        self.connection = None
+        self.is_connected = False
+    
+    def connect(self, server: str, database: str, username: str, password: str,
+                driver: str = "ODBC Driver 17 for SQL Server") -> bool:
+        """Connect to SQL Server database"""
+        try:
+            self.connection_string = (
+                f"DRIVER={{{driver}}};"
+                f"SERVER={server};"
+                f"DATABASE={database};"
+                f"UID={username};"
+                f"PWD={password};"
+                "TrustServerCertificate=yes;"
+            )
+            self.connection = pyodbc.connect(self.connection_string)
+            self.is_connected = True
+            logger.info(f"✅ Connected to database: {database} on {server}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Database connection failed: {e}")
+            self.is_connected = False
+            return False
+    
+    def get_table_names(self) -> List[str]:
+        """Get list of table names in the database"""
+        if not self.is_connected:
+            return []
+        
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT TABLE_NAME 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_TYPE = 'BASE TABLE'
+                ORDER BY TABLE_NAME
+            """)
+            tables = [row[0] for row in cursor.fetchall()]
+            return tables
+        except Exception as e:
+            logger.error(f"❌ Failed to get table names: {e}")
+            return []
+    
+    def get_column_names(self, table_name: str) -> List[str]:
+        """Get column names for a specific table"""
+        if not self.is_connected:
+            return []
+        
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(f"""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = '{table_name}'
+                ORDER BY ORDINAL_POSITION
+            """)
+            columns = [row[0] for row in cursor.fetchall()]
+            return columns
+        except Exception as e:
+            logger.error(f"❌ Failed to get columns for table {table_name}: {e}")
+            return []
+    
+    def query_data(self, query: str, params: Optional[tuple] = None) -> List[tuple]:
+        """Execute a query and return results"""
+        if not self.is_connected:
+            return []
+        
+        try:
+            cursor = self.connection.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"❌ Query failed: {e}")
+            return []
+    
+    def close(self):
+        """Close database connection"""
+        if self.connection:
+            self.connection.close()
+            self.is_connected = False
+            logger.info("Database connection closed")
+
+# ============================================================================
+# MAIN FUNCTION
 # ============================================================================
 
 def main():
-    """Main function to run the application"""
-    # Set DPI awareness on Windows
-    if sys.platform == 'win32':
-        try:
-            from ctypes import windll
-            windll.shcore.SetProcessDpiAwareness(1)
-        except:
-            pass
+    """Main entry point"""
+    # Check for required packages
+    required_packages = ['pyodbc', 'openpyxl', 'PIL', 'tkcalendar']
+    missing_packages = []
     
+    for package in required_packages:
+        try:
+            __import__(package.replace('-', '_'))
+        except ImportError:
+            missing_packages.append(package)
+    
+    if missing_packages:
+        print("Missing required packages:")
+        for pkg in missing_packages:
+            print(f"  - {pkg}")
+        print("\nInstall with: pip install " + " ".join(missing_packages))
+        return
+    
+    # Create and run GUI
     root = tk.Tk()
     
-    # Set window title and icon
-    root.title("Multi-Table Excel Exporter Pro")
+    # Set window icon if available
+    try:
+        root.iconbitmap(default='icon.ico')
+    except:
+        pass
     
-    # Create application
-    app = MultiTableExporterApp(root)
+    app = TableExporterGUI(root)
     
-    # Center window on screen
+    # Center the window
     root.update_idletasks()
     width = root.winfo_width()
     height = root.winfo_height()
@@ -1904,11 +1289,14 @@ def main():
     y = (root.winfo_screenheight() // 2) - (height // 2)
     root.geometry(f'{width}x{height}+{x}+{y}')
     
-    # Handle window close
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    
-    # Start main loop
-    root.mainloop()
+    # Start the application
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        print("\nApplication terminated by user")
+    except Exception as e:
+        print(f"Application error: {e}")
+        logger.error(f"Application error: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()

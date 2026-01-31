@@ -1,0 +1,171 @@
+{
+  "NIDEC VPI Job Card Approved - Rev 2 (1)": {
+    "file_path": "C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx",
+    "table_positions": {
+      "SR_NO": {
+        "table_name": "SR_NO",
+        "sheet_name": "LT VPI - 4197",
+        "start_row": 10,
+        "start_col": "A",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": [
+          "SR NO.",
+          "PROCESS DESCRIPTION",
+          "TIME",
+          "SETPOINT",
+          "UNIT",
+          "PROCESS TANK VACUUM / PRESSURE\nmBar",
+          "RESIN TANK VACUUM / PRESSURE\nmBar",
+          "JOB NO 1 SERIAL NO CAPACITANCE \nC1 (nF)",
+          "JOB NO 2 SERIAL NO CAPACITANCE \nC2  (nF)",
+          "JOB NO 3 SERIAL NO CAPACITANCE \nC3   (nF)",
+          "JOB NO 4 SERIAL NO CAPACITANCE \nC4  (nF)",
+          "RESIN \nTEMP.\n⁰C",
+          "RESIN LTR",
+          "JOB 1 SERIAL NO  TEMP.⁰C",
+          "JOB 2 SERIAL NO  TEMP.⁰C",
+          "JOB 3 SERIAL NO  TEMP.⁰C",
+          "JOB 4 SERIAL NO  TEMP.⁰C"
+        ]
+      },
+      "PROCESS_DESCRIPTION": {
+        "table_name": "PROCESS_DESCRIPTION",
+        "sheet_name": "LT VPI - 4197",
+        "start_row": 10,
+        "start_col": "B",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": [
+          "SR NO.",
+          "PROCESS DESCRIPTION",
+          "TIME",
+          "SETPOINT",
+          "UNIT",
+          "PROCESS TANK VACUUM / PRESSURE\nmBar",
+          "RESIN TANK VACUUM / PRESSURE\nmBar",
+          "JOB NO 1 SERIAL NO CAPACITANCE \nC1 (nF)",
+          "JOB NO 2 SERIAL NO CAPACITANCE \nC2  (nF)",
+          "JOB NO 3 SERIAL NO CAPACITANCE \nC3   (nF)",
+          "JOB NO 4 SERIAL NO CAPACITANCE \nC4  (nF)",
+          "RESIN \nTEMP.\n⁰C",
+          "RESIN LTR",
+          "JOB 1 SERIAL NO  TEMP.⁰C",
+          "JOB 2 SERIAL NO  TEMP.⁰C",
+          "JOB 3 SERIAL NO  TEMP.⁰C",
+          "JOB 4 SERIAL NO  TEMP.⁰C"
+        ]
+      },
+      "DATE_TIME": {
+        "table_name": "DATE_TIME",
+        "sheet_name": "LT VPI - 4197",
+        "start_row": 10,
+        "start_col": "C",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": [
+          "SR NO.",
+          "PROCESS DESCRIPTION",
+          "TIME",
+          "SETPOINT",
+          "UNIT",
+          "PROCESS TANK VACUUM / PRESSURE\nmBar",
+          "RESIN TANK VACUUM / PRESSURE\nmBar",
+          "JOB NO 1 SERIAL NO CAPACITANCE \nC1 (nF)",
+          "JOB NO 2 SERIAL NO CAPACITANCE \nC2  (nF)",
+          "JOB NO 3 SERIAL NO CAPACITANCE \nC3   (nF)",
+          "JOB NO 4 SERIAL NO CAPACITANCE \nC4  (nF)",
+          "RESIN \nTEMP.\n⁰C",
+          "RESIN LTR",
+          "JOB 1 SERIAL NO  TEMP.⁰C",
+          "JOB 2 SERIAL NO  TEMP.⁰C",
+          "JOB 3 SERIAL NO  TEMP.⁰C",
+          "JOB 4 SERIAL NO  TEMP.⁰C"
+        ]
+      },
+      "SETPOINT": {
+        "table_name": "SETPOINT",
+        "sheet_name": "LT VPI - 4197",
+        "start_row": 10,
+        "start_col": "D",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": [
+          "SR NO.",
+          "PROCESS DESCRIPTION",
+          "TIME",
+          "SETPOINT",
+          "UNIT",
+          "PROCESS TANK VACUUM / PRESSURE\nmBar",
+          "RESIN TANK VACUUM / PRESSURE\nmBar",
+          "JOB NO 1 SERIAL NO CAPACITANCE \nC1 (nF)",
+          "JOB NO 2 SERIAL NO CAPACITANCE \nC2  (nF)",
+          "JOB NO 3 SERIAL NO CAPACITANCE \nC3   (nF)",
+          "JOB NO 4 SERIAL NO CAPACITANCE \nC4  (nF)",
+          "RESIN \nTEMP.\n⁰C",
+          "RESIN LTR",
+          "JOB 1 SERIAL NO  TEMP.⁰C",
+          "JOB 2 SERIAL NO  TEMP.⁰C",
+          "JOB 3 SERIAL NO  TEMP.⁰C",
+          "JOB 4 SERIAL NO  TEMP.⁰C"
+        ]
+      },
+      "UNIT": {
+        "table_name": "UNIT",
+        "sheet_name": "LT VPI - 4197",
+        "start_row": 10,
+        "start_col": "E",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": [
+          "SR NO.",
+          "PROCESS DESCRIPTION",
+          "TIME",
+          "SETPOINT",
+          "UNIT",
+          "PROCESS TANK VACUUM / PRESSURE\nmBar",
+          "RESIN TANK VACUUM / PRESSURE\nmBar",
+          "JOB NO 1 SERIAL NO CAPACITANCE \nC1 (nF)",
+          "JOB NO 2 SERIAL NO CAPACITANCE \nC2  (nF)",
+          "JOB NO 3 SERIAL NO CAPACITANCE \nC3   (nF)",
+          "JOB NO 4 SERIAL NO CAPACITANCE \nC4  (nF)",
+          "RESIN \nTEMP.\n⁰C",
+          "RESIN LTR",
+          "JOB 1 SERIAL NO  TEMP.⁰C",
+          "JOB 2 SERIAL NO  TEMP.⁰C",
+          "JOB 3 SERIAL NO  TEMP.⁰C",
+          "JOB 4 SERIAL NO  TEMP.⁰C"
+        ]
+      },
+      "BACKGROUND_DATA": {
+        "table_name": "BACKGROUND_DATA",
+        "sheet_name": "Sheet1",
+        "start_row": 3,
+        "start_col": "A",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": []
+      },
+      "BATCH_DATA": {
+        "table_name": "BATCH_DATA",
+        "sheet_name": "Sheet1",
+        "start_row": 16,
+        "start_col": "A",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": []
+      },
+      "HEADER": {
+        "table_name": "HEADER",
+        "sheet_name": "Sheet1",
+        "start_row": 3,
+        "start_col": "A",
+        "header_positions": {},
+        "merge_ranges": [],
+        "template_headers": []
+      }
+    },
+    "created_date": "2026-01-31T15:10:27.764321",
+    "last_modified": "2026-01-31T15:10:27.764329"
+  }
+}

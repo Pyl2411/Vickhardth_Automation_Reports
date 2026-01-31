@@ -1,0 +1,1004 @@
+2026-01-28 17:35:31,621 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-28 17:35:31,658 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-28 17:35:31,708 - INFO - Retrieved 4 tables
+2026-01-28 17:35:48,636 - INFO - Loading template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-28 17:35:48,665 - INFO - Template loaded successfully: 3 sheets
+2026-01-28 17:36:48,111 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-28 17:36:48,113 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-28 17:36:48,114 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-28 17:36:48,115 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-28 17:36:48,115 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-28 17:36:48,116 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-28 17:36:48,116 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-28 17:36:48,117 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-28 17:36:48,126 - INFO - Starting export to template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-28 17:36:48,154 - ERROR - Error adding table with formatting: 'MergedCell' object attribute 'value' is read-only
+2026-01-28 17:36:48,154 - ERROR - Export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-28 17:49:43,287 - INFO - Connecting to MAHESHWAGH\WINCC/VPI1
+2026-01-28 17:49:43,314 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-28 17:49:43,320 - INFO - Retrieved 4 tables
+2026-01-28 17:49:53,517 - INFO - Loading template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-28 17:49:53,546 - INFO - Template loaded successfully: 3 sheets
+2026-01-28 17:50:41,486 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-28 17:50:41,488 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-28 17:50:41,488 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-28 17:50:41,489 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-28 17:50:41,490 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-28 17:50:41,491 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-28 17:50:41,491 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-28 17:50:41,492 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-28 17:50:41,493 - INFO - Starting export to template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-28 17:50:41,513 - INFO - Table 'BACKGROUND_DATA' will be written at A1
+2026-01-28 17:50:41,513 - ERROR - Error adding table safely: 'MergedCell' object attribute 'value' is read-only
+2026-01-28 17:50:41,514 - ERROR - Export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-28 17:50:41,517 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 572, in export_to_template
+    ExcelExporter.add_table_safely(ws, table_data, position_info)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 650, in add_table_safely
+    cell = ws.cell(row=safe_row, column=safe_col + col_idx, value=header)
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-29 10:30:42,583 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 10:30:42,639 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 10:30:42,683 - INFO - Retrieved 4 tables
+2026-01-29 10:30:56,798 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 10:30:56,898 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 10:31:40,167 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-29 10:31:40,169 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-29 10:31:40,169 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-29 10:31:40,170 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-29 10:31:40,171 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-29 10:31:40,172 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-29 10:31:40,172 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-29 10:31:40,173 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-29 10:31:40,181 - INFO - Starting export to template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 10:31:40,274 - WARNING - Sheet 'Sheet1' not found, creating new sheet
+2026-01-29 10:31:40,365 - INFO - Added table BACKGROUND_DATA to sheet Sheet1 at row 1
+2026-01-29 10:31:40,460 - INFO - Added table BATCH_DATA to sheet Sheet1 at row 1
+2026-01-29 10:31:40,571 - INFO - Added table BATCH_DATA2 to sheet Sheet1 at row 1
+2026-01-29 10:31:40,577 - INFO - Added table HEADER to sheet Sheet1 at row 1
+2026-01-29 10:31:40,619 - INFO - Export completed successfully: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1)_export_20260129_103134.xlsx
+2026-01-29 10:32:45,073 - INFO - Disconnected from database
+2026-01-29 11:04:24,771 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:04:24,946 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 11:04:34,038 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:04:34,119 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:04:34,146 - INFO - Retrieved 4 tables
+2026-01-29 11:04:48,295 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:04:48,368 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 11:05:55,506 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-29 11:05:55,510 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-29 11:05:55,510 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-29 11:05:55,512 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-29 11:05:55,512 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-29 11:05:55,513 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-29 11:05:55,514 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-29 11:05:55,515 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-29 11:05:55,524 - INFO - Starting export to template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:05:55,603 - WARNING - Sheet 'Sheet1' not found, creating new sheet
+2026-01-29 11:05:55,692 - INFO - Added table BACKGROUND_DATA to sheet Sheet1 at row 1
+2026-01-29 11:05:55,775 - INFO - Added table BATCH_DATA to sheet Sheet1 at row 1
+2026-01-29 11:05:55,882 - INFO - Added table BATCH_DATA2 to sheet Sheet1 at row 1
+2026-01-29 11:05:55,889 - INFO - Added table HEADER to sheet Sheet1 at row 1
+2026-01-29 11:05:55,934 - INFO - Export completed successfully: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1)_export_20260129_110552.xlsx
+2026-01-29 11:06:18,692 - INFO - Disconnected from database
+2026-01-29 11:14:18,471 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:14:18,556 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 11:14:20,823 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:14:20,850 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:14:21,385 - INFO - Retrieved 4 tables
+2026-01-29 11:14:43,071 - INFO - Retrieved 4 tables
+2026-01-29 11:15:12,397 - INFO - Retrieved 4 tables
+2026-01-29 11:15:14,271 - INFO - Retrieved 4 tables
+2026-01-29 11:15:26,404 - INFO - Loading template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-29 11:15:26,424 - INFO - Template loaded successfully: 3 sheets
+2026-01-29 11:20:15,620 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:20:15,705 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 11:20:17,958 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:20:17,982 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:20:18,516 - INFO - Retrieved 4 tables
+2026-01-29 11:20:26,580 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:20:26,588 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:20:27,100 - INFO - Retrieved 4 tables
+2026-01-29 11:20:28,421 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:20:28,422 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:20:28,933 - INFO - Retrieved 4 tables
+2026-01-29 11:20:39,791 - INFO - Retrieved 4 tables
+2026-01-29 11:20:40,657 - INFO - Retrieved 4 tables
+2026-01-29 11:28:48,413 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:28:48,499 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 11:28:50,464 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:28:50,487 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:28:51,017 - INFO - Retrieved 4 tables
+2026-01-29 11:28:51,017 - INFO - Retrieved 4 tables from database
+2026-01-29 11:28:51,018 - ERROR - Error inserting table [dbo].[BACKGROUND_DATA] (68 rows): Invalid column index full_name
+2026-01-29 11:28:51,019 - ERROR - Error inserting table [dbo].[BATCH_DATA] (45 rows): Invalid column index full_name
+2026-01-29 11:28:51,019 - ERROR - Error inserting table [dbo].[BATCH_DATA2] (60 rows): Invalid column index full_name
+2026-01-29 11:28:51,019 - ERROR - Error inserting table [dbo].[HEADER] (4 rows): Invalid column index full_name
+2026-01-29 11:28:51,020 - INFO - Populated 0 tables into treeview
+2026-01-29 11:29:07,733 - INFO - Retrieved 4 tables
+2026-01-29 11:29:07,733 - INFO - Retrieved 4 tables from database
+2026-01-29 11:29:07,734 - ERROR - Error inserting table [dbo].[BACKGROUND_DATA] (68 rows): Invalid column index full_name
+2026-01-29 11:29:07,735 - ERROR - Error inserting table [dbo].[BATCH_DATA] (45 rows): Invalid column index full_name
+2026-01-29 11:29:07,735 - ERROR - Error inserting table [dbo].[BATCH_DATA2] (60 rows): Invalid column index full_name
+2026-01-29 11:29:07,735 - ERROR - Error inserting table [dbo].[HEADER] (4 rows): Invalid column index full_name
+2026-01-29 11:29:07,736 - INFO - Populated 0 tables into treeview
+2026-01-29 11:35:23,727 - INFO - Disconnected from database
+2026-01-29 11:35:27,813 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1).xlsx
+2026-01-29 11:35:27,902 - INFO - Template loaded successfully: 2 sheets
+2026-01-29 11:35:31,321 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:35:31,345 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:35:31,876 - INFO - Retrieved 4 tables
+2026-01-29 11:35:31,877 - INFO - Retrieved 4 tables from database
+2026-01-29 11:35:32,688 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:35:32,697 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:35:33,207 - INFO - Retrieved 4 tables
+2026-01-29 11:35:33,208 - INFO - Retrieved 4 tables from database
+2026-01-29 11:36:04,061 - INFO - Loading template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-29 11:36:04,077 - INFO - Template loaded successfully: 3 sheets
+2026-01-29 11:38:06,468 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-29 11:38:06,470 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-29 11:38:06,471 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-29 11:38:06,472 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-29 11:38:06,472 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-29 11:38:06,473 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-29 11:38:06,474 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-29 11:38:06,474 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-29 11:38:06,485 - INFO - Starting export to template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-29 11:38:06,510 - ERROR - Error adding table with formatting: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 11:38:06,511 - ERROR - Export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 11:41:31,448 - INFO - Disconnected from database
+2026-01-29 11:42:00,261 - INFO - Loading template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-29 11:42:00,290 - INFO - Template loaded successfully: 3 sheets
+2026-01-29 11:42:07,066 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:42:07,090 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:42:07,615 - INFO - Retrieved 4 tables
+2026-01-29 11:42:07,616 - INFO - Retrieved 4 tables from database
+2026-01-29 11:42:09,149 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:42:09,157 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:42:09,671 - INFO - Retrieved 4 tables
+2026-01-29 11:42:09,671 - INFO - Retrieved 4 tables from database
+2026-01-29 11:42:10,457 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:42:10,458 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:42:10,970 - INFO - Retrieved 4 tables
+2026-01-29 11:42:10,970 - INFO - Retrieved 4 tables from database
+2026-01-29 11:42:19,946 - INFO - Retrieved 17 columns for dbo.BACKGROUND_DATA
+2026-01-29 11:42:22,055 - INFO - Retrieved 22 columns for dbo.BATCH_DATA
+2026-01-29 11:42:23,462 - INFO - Retrieved 22 columns for dbo.BATCH_DATA2
+2026-01-29 11:42:25,050 - INFO - Retrieved 14 columns for dbo.HEADER
+2026-01-29 11:43:25,287 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-29 11:43:25,289 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-29 11:43:25,289 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-29 11:43:25,291 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-29 11:43:25,291 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-29 11:43:25,292 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-29 11:43:25,293 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-29 11:43:25,294 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-29 11:43:25,301 - INFO - Starting export to template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-29 11:43:25,486 - INFO - Added table BACKGROUND_DATA to sheet Sheet1 at row 1
+2026-01-29 11:43:25,628 - INFO - Added table BATCH_DATA to sheet Sheet1 at row 1
+2026-01-29 11:43:25,809 - INFO - Added table BATCH_DATA2 to sheet Sheet1 at row 1
+2026-01-29 11:43:25,819 - INFO - Added table HEADER to sheet Sheet1 at row 1
+2026-01-29 11:43:25,863 - INFO - Export completed successfully: C:/Users/waghm/Downloads/5_6327753515942812073_export_20260129_114322.xlsx
+2026-01-29 11:58:25,196 - INFO - Disconnected from database
+2026-01-29 11:58:29,872 - INFO - Loading template: C:/Users/waghm/Downloads/5_6327753515942812073.xlsx
+2026-01-29 11:58:29,902 - INFO - Template loaded successfully: 3 sheets
+2026-01-29 11:58:46,921 - INFO - Attempting to connect to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:58:46,943 - INFO - Connected successfully to MAHESHWAGH\WINCC/VPI1
+2026-01-29 11:58:47,478 - INFO - Retrieved 4 tables
+2026-01-29 11:58:47,478 - INFO - Retrieved 4 tables from database
+2026-01-29 11:59:14,370 - INFO - Retrieved 17 columns for dbo.BACKGROUND_DATA
+2026-01-29 12:00:15,498 - INFO - Loading template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1)_export_20260129_110552.xlsx
+2026-01-29 12:00:15,588 - INFO - Template loaded successfully: 4 sheets
+2026-01-29 12:04:36,275 - INFO - Fetching data from [dbo].[BACKGROUND_DATA] with limit=None
+2026-01-29 12:04:36,277 - INFO - Fetched 68 rows from [dbo].[BACKGROUND_DATA] (total: 68)
+2026-01-29 12:04:36,277 - INFO - Fetching data from [dbo].[BATCH_DATA] with limit=None
+2026-01-29 12:04:36,278 - INFO - Fetched 45 rows from [dbo].[BATCH_DATA] (total: 45)
+2026-01-29 12:04:36,279 - INFO - Fetching data from [dbo].[BATCH_DATA2] with limit=None
+2026-01-29 12:04:36,280 - INFO - Fetched 60 rows from [dbo].[BATCH_DATA2] (total: 60)
+2026-01-29 12:04:36,280 - INFO - Fetching data from [dbo].[HEADER] with limit=None
+2026-01-29 12:04:36,281 - INFO - Fetched 4 rows from [dbo].[HEADER] (total: 4)
+2026-01-29 12:04:36,290 - INFO - Starting export to template: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1)_export_20260129_110552.xlsx
+2026-01-29 12:04:36,477 - INFO - Added table BACKGROUND_DATA to sheet Sheet1 at row 1
+2026-01-29 12:04:36,600 - INFO - Added table BATCH_DATA to sheet Sheet1 at row 1
+2026-01-29 12:04:36,724 - INFO - Added table BATCH_DATA2 to sheet Sheet1 at row 1
+2026-01-29 12:04:36,731 - INFO - Added table HEADER to sheet Sheet1 at row 1
+2026-01-29 12:04:36,774 - INFO - Export completed successfully: C:/Users/waghm/Downloads/NIDEC VPI Job Card Approved - Rev 2 (1)_export_20260129_110552_export_20260129_120433.xlsx
+2026-01-29 12:05:56,081 - INFO - Disconnected from database
+2026-01-29 13:19:06,278 - ERROR - Error adding table to sheet: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 13:19:06,280 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 13:19:06,289 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 830, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 936, in add_table_to_sheet
+    cell = ws.cell(row=excel_row, column=start_col_num + col_idx, value=value)
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-29 13:19:06,301 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 1947, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 830, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 936, in add_table_to_sheet
+    cell = ws.cell(row=excel_row, column=start_col_num + col_idx, value=value)
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-29 14:43:55,268 - ERROR - Error adding table to sheet: A-2 is not a valid coordinate or range
+2026-01-29 14:43:55,270 - ERROR - Template export error: A-2 is not a valid coordinate or range
+2026-01-29 14:43:55,274 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 865, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 943, in add_table_to_sheet
+    ws[title_cell] = f"Data from {table_data['display_name']}"
+    ~~^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 317, in __setitem__
+    self[key].value = value
+    ~~~~^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 294, in __getitem__
+    min_col, min_row, max_col, max_row = range_boundaries(key)
+                                         ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\utils\cell.py", line 148, in range_boundaries
+    raise ValueError(msg)
+ValueError: A-2 is not a valid coordinate or range
+
+2026-01-29 14:43:55,277 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 1987, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 865, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 943, in add_table_to_sheet
+    ws[title_cell] = f"Data from {table_data['display_name']}"
+    ~~^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 317, in __setitem__
+    self[key].value = value
+    ~~~~^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 294, in __getitem__
+    min_col, min_row, max_col, max_row = range_boundaries(key)
+                                         ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\utils\cell.py", line 148, in range_boundaries
+    raise ValueError(msg)
+ValueError: A-2 is not a valid coordinate or range
+
+2026-01-29 16:38:48,165 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-29 16:38:48,322 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-29 16:38:48,447 - INFO - Writing 22 column headers to row 15, starting at column 1
+2026-01-29 16:38:48,616 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-29 16:47:59,298 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-29 16:47:59,299 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 16:47:59,301 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,302 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,302 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,302 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,303 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,303 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,304 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,306 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-29 16:47:59,472 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 16:47:59,473 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,473 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,474 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,474 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,475 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,475 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,475 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,478 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-29 16:47:59,625 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 16:47:59,626 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,626 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,626 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,626 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,626 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,627 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,627 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,628 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-29 16:47:59,804 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 16:47:59,804 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,804 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,805 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,805 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,805 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,805 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,805 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 16:47:59,807 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-29 17:06:32,114 - INFO - Auto-positioned table 'dbo.BACKGROUND_DATA (68 rows)' on sheet 'Sheet1' starting at row 25
+2026-01-29 17:06:32,115 - INFO - Auto-positioned table 'dbo.BATCH_DATA (45 rows)' on sheet 'Sheet1' starting at row 50
+2026-01-29 17:06:32,116 - INFO - Auto-positioned table 'dbo.BATCH_DATA2 (60 rows)' on sheet 'Sheet1' starting at row 75
+2026-01-29 17:06:32,116 - INFO - Auto-positioned table 'dbo.HEADER (4 rows)' on sheet 'Sheet1' starting at row 100
+2026-01-29 17:07:08,302 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-29 17:07:08,303 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A25
+2026-01-29 17:07:08,304 - INFO - Writing 17 column headers to row 24, starting at column 1
+2026-01-29 17:07:08,451 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A50
+2026-01-29 17:07:08,452 - INFO - Writing 22 column headers to row 49, starting at column 1
+2026-01-29 17:07:08,585 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A75
+2026-01-29 17:07:08,587 - INFO - Writing 22 column headers to row 74, starting at column 1
+2026-01-29 17:07:08,743 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A100
+2026-01-29 17:07:08,745 - INFO - Writing 14 column headers to row 99, starting at column 1
+2026-01-29 17:13:16,652 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-29 17:13:16,652 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A25
+2026-01-29 17:13:16,654 - INFO - Writing 17 column headers to row 24, starting at column 1
+2026-01-29 17:13:16,676 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A50
+2026-01-29 17:13:16,677 - INFO - Writing 22 column headers to row 49, starting at column 1
+2026-01-29 17:13:16,708 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A75
+2026-01-29 17:13:16,709 - INFO - Writing 22 column headers to row 74, starting at column 1
+2026-01-29 17:13:16,747 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A100
+2026-01-29 17:13:16,748 - INFO - Writing 14 column headers to row 99, starting at column 1
+2026-01-29 17:16:31,914 - INFO - Auto-positioned table 'dbo.BACKGROUND_DATA (68 rows)' on sheet 'Sheet1' starting at row 25
+2026-01-29 17:16:31,914 - INFO - Auto-positioned table 'dbo.BATCH_DATA (45 rows)' on sheet 'Sheet1' starting at row 50
+2026-01-29 17:16:31,915 - INFO - Auto-positioned table 'dbo.BATCH_DATA2 (60 rows)' on sheet 'Sheet1' starting at row 75
+2026-01-29 17:16:31,915 - INFO - Auto-positioned table 'dbo.HEADER (4 rows)' on sheet 'Sheet1' starting at row 100
+2026-01-29 17:17:08,151 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-29 17:17:08,152 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A25
+2026-01-29 17:17:08,153 - INFO - Writing 17 column headers to row 24, starting at column 1
+2026-01-29 17:17:08,291 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A50
+2026-01-29 17:17:08,293 - INFO - Writing 22 column headers to row 49, starting at column 1
+2026-01-29 17:17:08,426 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A75
+2026-01-29 17:17:08,427 - INFO - Writing 22 column headers to row 74, starting at column 1
+2026-01-29 17:17:08,596 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A100
+2026-01-29 17:17:08,599 - INFO - Writing 14 column headers to row 99, starting at column 1
+2026-01-29 17:32:38,619 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-29 17:32:38,621 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 17:32:38,623 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,625 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,626 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,628 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,630 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,631 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,632 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:38,643 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-29 17:32:39,306 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 17:32:39,308 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,310 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,312 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,313 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,314 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,315 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,315 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:39,325 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-29 17:32:40,020 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 17:32:40,022 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,023 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,023 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,024 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,025 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,025 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,026 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,036 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-29 17:32:40,790 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A16
+2026-01-29 17:32:40,792 - WARNING - Could not write header BATCH_NUMBER to A2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,793 - WARNING - Could not write header JOB_NO to A3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,794 - WARNING - Could not write header OPERATOR_NAME to A4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,794 - WARNING - Could not write header DATE to H1: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,795 - WARNING - Could not write header TIME to H2: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,796 - WARNING - Could not write header SHIFT to H3: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,796 - WARNING - Could not write header STATION to H4: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:32:40,808 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-29 17:38:12,399 - INFO - Auto-positioned table 'dbo.BACKGROUND_DATA (68 rows)' on sheet 'HT VPI - 4196' starting at row 11
+2026-01-29 17:38:12,401 - INFO - Auto-positioned table 'dbo.BATCH_DATA (45 rows)' on sheet 'HT VPI - 4196' starting at row 36
+2026-01-29 17:38:12,402 - INFO - Auto-positioned table 'dbo.BATCH_DATA2 (60 rows)' on sheet 'HT VPI - 4196' starting at row 61
+2026-01-29 17:38:12,403 - INFO - Auto-positioned table 'dbo.HEADER (4 rows)' on sheet 'HT VPI - 4196' starting at row 86
+2026-01-29 17:38:49,270 - INFO - Using template sheet: 'LT VPI - 4197' for all tables
+2026-01-29 17:38:49,272 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'LT VPI - 4197' at position A11
+2026-01-29 17:38:49,283 - INFO - Writing 17 column headers to row 10, starting at column 1
+2026-01-29 17:38:49,481 - ERROR - Error adding table to sheet: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:38:49,483 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-29 17:38:49,496 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 914, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 1035, in add_table_to_sheet
+    cell = ws.cell(row=excel_row, column=start_col_num + col_idx, value=value)
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-29 17:38:49,512 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 2698, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 914, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\gpt.py", line 1035, in add_table_to_sheet
+    cell = ws.cell(row=excel_row, column=start_col_num + col_idx, value=value)
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-29 17:51:56,994 - INFO - Auto-positioned table 'dbo.BACKGROUND_DATA (68 rows)' on sheet 'Sheet1' starting at row 25
+2026-01-29 17:51:56,995 - INFO - Auto-positioned table 'dbo.BATCH_DATA (45 rows)' on sheet 'Sheet1' starting at row 50
+2026-01-29 17:51:56,996 - INFO - Auto-positioned table 'dbo.BATCH_DATA2 (60 rows)' on sheet 'Sheet1' starting at row 75
+2026-01-29 17:51:56,997 - INFO - Auto-positioned table 'dbo.HEADER (4 rows)' on sheet 'Sheet1' starting at row 100
+2026-01-29 17:52:32,397 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-29 17:52:32,399 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A25
+2026-01-29 17:52:32,401 - INFO - Found 5 merged cell ranges in sheet 'Sheet1'
+2026-01-29 17:52:32,402 - INFO - Will skip writing to 5 merged cell ranges
+2026-01-29 17:52:32,412 - INFO - Writing 17 column headers to row 24, starting at column 1
+2026-01-29 17:52:33,258 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A50
+2026-01-29 17:52:33,260 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-29 17:52:33,261 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-29 17:52:33,274 - INFO - Writing 22 column headers to row 49, starting at column 1
+2026-01-29 17:52:34,017 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A75
+2026-01-29 17:52:34,019 - INFO - Found 7 merged cell ranges in sheet 'Sheet1'
+2026-01-29 17:52:34,020 - INFO - Will skip writing to 7 merged cell ranges
+2026-01-29 17:52:34,028 - INFO - Writing 22 column headers to row 74, starting at column 1
+2026-01-29 17:52:34,969 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A100
+2026-01-29 17:52:34,972 - INFO - Found 8 merged cell ranges in sheet 'Sheet1'
+2026-01-29 17:52:34,973 - INFO - Will skip writing to 8 merged cell ranges
+2026-01-29 17:52:34,982 - INFO - Writing 14 column headers to row 99, starting at column 1
+2026-01-30 09:57:44,260 - INFO - Auto-positioned table 'dbo.BACKGROUND_DATA (68 rows)' on sheet 'Sheet1' starting at row 25
+2026-01-30 09:57:44,261 - INFO - Auto-positioned table 'dbo.BATCH_DATA (45 rows)' on sheet 'Sheet1' starting at row 50
+2026-01-30 09:57:44,262 - INFO - Auto-positioned table 'dbo.BATCH_DATA2 (60 rows)' on sheet 'Sheet1' starting at row 75
+2026-01-30 09:57:44,263 - INFO - Auto-positioned table 'dbo.HEADER (4 rows)' on sheet 'Sheet1' starting at row 100
+2026-01-30 09:58:19,927 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 09:58:19,929 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A25
+2026-01-30 09:58:19,930 - INFO - Found 5 merged cell ranges in sheet 'Sheet1'
+2026-01-30 09:58:19,932 - INFO - Will skip writing to 5 merged cell ranges
+2026-01-30 09:58:19,941 - INFO - Writing 17 column headers to row 24, starting at column 1
+2026-01-30 09:58:20,881 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A50
+2026-01-30 09:58:20,884 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 09:58:20,885 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 09:58:20,905 - INFO - Writing 22 column headers to row 49, starting at column 1
+2026-01-30 09:58:21,740 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A75
+2026-01-30 09:58:21,741 - INFO - Found 7 merged cell ranges in sheet 'Sheet1'
+2026-01-30 09:58:21,743 - INFO - Will skip writing to 7 merged cell ranges
+2026-01-30 09:58:21,750 - INFO - Writing 22 column headers to row 74, starting at column 1
+2026-01-30 09:58:22,807 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A100
+2026-01-30 09:58:22,809 - INFO - Found 8 merged cell ranges in sheet 'Sheet1'
+2026-01-30 09:58:22,810 - INFO - Will skip writing to 8 merged cell ranges
+2026-01-30 09:58:22,817 - INFO - Writing 14 column headers to row 99, starting at column 1
+2026-01-30 10:19:56,001 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 10:19:56,002 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:19:56,003 - INFO - Found 5 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:19:56,003 - INFO - Will skip writing to 5 merged cell ranges
+2026-01-30 10:19:56,004 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:19:56,005 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:19:56,006 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:19:56,006 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:19:56,007 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:19:56,008 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:19:56,008 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:19:56,009 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:19:56,012 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-30 10:19:56,198 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:19:56,199 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:19:56,199 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 10:19:56,199 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:19:56,200 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:19:56,200 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:19:56,200 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:19:56,201 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:19:56,201 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:19:56,201 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:19:56,202 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:19:56,204 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-30 10:19:56,376 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:19:56,377 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:19:56,377 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 10:19:56,378 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:19:56,378 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:19:56,379 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:19:56,379 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:19:56,379 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:19:56,379 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:19:56,379 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:19:56,379 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:19:56,382 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-30 10:46:25,885 - INFO - Auto-positioned table 'dbo.BACKGROUND_DATA (68 rows)' on sheet 'Sheet1' starting at row 25
+2026-01-30 10:46:25,886 - INFO - Auto-positioned table 'dbo.BATCH_DATA (45 rows)' on sheet 'Sheet1' starting at row 50
+2026-01-30 10:46:25,886 - INFO - Auto-positioned table 'dbo.BATCH_DATA2 (60 rows)' on sheet 'Sheet1' starting at row 75
+2026-01-30 10:46:25,887 - INFO - Auto-positioned table 'dbo.HEADER (4 rows)' on sheet 'Sheet1' starting at row 100
+2026-01-30 10:49:59,818 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 10:49:59,819 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:49:59,820 - INFO - Found 5 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:49:59,820 - INFO - Will skip writing to 5 merged cell ranges
+2026-01-30 10:49:59,821 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:49:59,822 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:49:59,823 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:49:59,823 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:49:59,824 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:49:59,824 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:49:59,825 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:49:59,825 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:49:59,834 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-30 10:50:00,000 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:50:00,001 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:50:00,002 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 10:50:00,002 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:50:00,003 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:50:00,003 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:50:00,004 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:50:00,004 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:50:00,005 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:50:00,005 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:50:00,006 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:50:00,009 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-30 10:50:00,167 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:50:00,168 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:50:00,169 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 10:50:00,169 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:50:00,170 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:50:00,170 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:50:00,171 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:50:00,171 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:50:00,172 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:50:00,172 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:50:00,173 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:50:00,176 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-30 10:50:00,364 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 10:50:00,364 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 10:50:00,365 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 10:50:00,365 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 10:50:00,365 - INFO - Wrote header BATCH_NUMBER to top-left of merged cell: A1
+2026-01-30 10:50:00,366 - INFO - Wrote header JOB_NO to top-left of merged cell: A1
+2026-01-30 10:50:00,366 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 10:50:00,366 - INFO - Wrote header DATE to top-left of merged cell: E1
+2026-01-30 10:50:00,367 - INFO - Wrote header TIME to top-left of merged cell: E2
+2026-01-30 10:50:00,367 - INFO - Wrote header SHIFT to top-left of merged cell: E3
+2026-01-30 10:50:00,367 - INFO - Wrote header STATION to top-left of merged cell: E4
+2026-01-30 10:50:00,370 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-30 15:35:54,306 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 15:35:54,307 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A56
+2026-01-30 15:35:54,309 - ERROR - Error adding table to sheet: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-30 15:35:54,309 - ERROR - Template export error: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-30 15:35:54,311 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-30 15:35:54,315 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 5341, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-30 16:07:13,228 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 16:07:13,229 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 16:07:13,230 - ERROR - Error adding table to sheet: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-30 16:07:13,230 - ERROR - Template export error: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-30 16:07:13,233 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-30 16:07:13,236 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 5341, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-30 16:22:03,051 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 16:22:03,051 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 16:22:03,051 - ERROR - Error adding table to sheet: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-30 16:22:03,052 - ERROR - Template export error: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-30 16:22:03,053 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-30 16:22:03,055 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 5341, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-30 17:28:27,157 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-30 17:28:27,158 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 17:28:27,159 - INFO - Found 5 merged cell ranges in sheet 'Sheet1'
+2026-01-30 17:28:27,160 - INFO - Will skip writing to 5 merged cell ranges
+2026-01-30 17:28:27,163 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-30 17:28:27,292 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 17:28:27,292 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 17:28:27,293 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 17:28:27,293 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-30 17:28:27,295 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 17:28:27,296 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-30 17:28:27,406 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 17:28:27,406 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 17:28:27,407 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 17:28:27,407 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-30 17:28:27,408 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 17:28:27,409 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-30 17:28:27,549 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'Sheet1' at position A16
+2026-01-30 17:28:27,549 - INFO - Found 6 merged cell ranges in sheet 'Sheet1'
+2026-01-30 17:28:27,549 - INFO - Will skip writing to 6 merged cell ranges
+2026-01-30 17:28:27,550 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-30 17:28:27,550 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A1
+2026-01-30 17:28:27,550 - INFO - Wrote header PRO_START_TIME to top-left of merged cell: E2
+2026-01-30 17:28:27,551 - INFO - Wrote header PRO_STOP_TIME to top-left of merged cell: E2
+2026-01-30 17:28:27,553 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-31 10:28:52,995 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-31 10:28:52,997 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-31 10:28:53,000 - ERROR - Error adding table to sheet: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-31 10:28:53,001 - ERROR - Template export error: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-31 10:28:53,014 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-31 10:28:53,026 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 5341, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    start_col_num = position_info.get_start_col_num()
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-31 10:34:23,882 - ERROR - Error fetching batch data: ('22007', '[22007] [Microsoft][ODBC SQL Server Driver][SQL Server]Conversion failed when converting date and/or time from character string. (241) (SQLExecDirectW)')
+2026-01-31 10:34:32,666 - ERROR - Template file not found: D:\Report Template\ReportTemplate.xlsx
+2026-01-31 10:34:32,667 - ERROR - Failed to create SCADA report: Failed to load template
+2026-01-31 10:34:32,667 - ERROR - Failed to create SCADA report: Failed to load template
+2026-01-31 10:34:32,677 - ERROR - Error creating SCADA report: Failed to load template
+2026-01-31 10:35:29,658 - ERROR - Template file not found: D:\Report Template\ReportTemplate.xlsx
+2026-01-31 10:35:29,658 - ERROR - Failed to create SCADA report: Failed to load template
+2026-01-31 10:35:29,659 - ERROR - Failed to create SCADA report: Failed to load template
+2026-01-31 10:40:03,159 - ERROR - Error fetching batch data: ('22007', '[22007] [Microsoft][ODBC SQL Server Driver][SQL Server]Conversion failed when converting date and/or time from character string. (241) (SQLExecDirectW)')
+2026-01-31 10:55:54,043 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:59:11', END_TIME='2024-10-29 18:21:00'
+2026-01-31 10:55:54,046 - INFO - Rows fetched: 0
+2026-01-31 10:55:58,793 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:11:11', END_TIME='2024-10-29 17:21:00'
+2026-01-31 10:55:58,796 - INFO - Rows fetched: 0
+2026-01-31 10:56:02,188 - INFO - Fetching batch data for BATCH_NAME='', START_TIME='2024-10-29 17:02:26', END_TIME='None'
+2026-01-31 10:56:02,191 - ERROR - Error fetching batch data: ('22007', '[22007] [Microsoft][ODBC SQL Server Driver][SQL Server]Conversion failed when converting date and/or time from character string. (241) (SQLExecDirectW)')
+2026-01-31 10:56:04,945 - INFO - Fetching batch data for BATCH_NAME='BATCH2', START_TIME='2024-10-29 16:50:21', END_TIME='2024-10-29 17:10:00'
+2026-01-31 10:56:04,947 - INFO - Rows fetched: 0
+2026-01-31 10:56:05,801 - INFO - Fetching batch data for BATCH_NAME='BATCH2', START_TIME='2024-10-29 16:50:21', END_TIME='2024-10-29 17:10:00'
+2026-01-31 10:56:05,803 - INFO - Rows fetched: 0
+2026-01-31 10:57:25,789 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:59:11', END_TIME='2024-10-29 18:21:00' (raw start='2024-10-29 17:59:11', raw end='2024-10-29 18:21:00')
+2026-01-31 10:57:25,791 - INFO - Rows fetched: 0
+2026-01-31 10:57:34,400 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:11:11', END_TIME='2024-10-29 17:21:00' (raw start='2024-10-29 17:11:11', raw end='2024-10-29 17:21:00')
+2026-01-31 10:57:34,404 - INFO - Rows fetched: 0
+2026-01-31 10:57:35,339 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:11:11', END_TIME='2024-10-29 17:21:00' (raw start='2024-10-29 17:11:11', raw end='2024-10-29 17:21:00')
+2026-01-31 10:57:35,341 - INFO - Rows fetched: 0
+2026-01-31 11:12:46,194 - ERROR - Application error: 'SCADAReportExporterApp' object has no attribute 'debug_print_batches'
+2026-01-31 11:14:25,435 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:59:11', END_TIME='2024-10-29 18:21:00' (raw start='2024-10-29 17:59:11', raw end='2024-10-29 18:21:00')
+2026-01-31 11:14:25,436 - INFO - Rows fetched: 0
+2026-01-31 11:14:33,778 - INFO - --- BATCH_DATA summary ---
+2026-01-31 11:14:33,778 - INFO - BATCH_NAME='BATCH1', MIN_DATE='2024-10-29 20:11:00', MAX_DATE='2024-10-29 20:25:00', ROWS=45
+2026-01-31 11:22:21,643 - INFO - Fetching batch data for BATCH_NAME='BATCH1', START_TIME='2024-10-29 17:11:11', END_TIME='2024-10-29 17:21:00' (raw start='2024-10-29 17:11:11', raw end='2024-10-29 17:21:00')
+2026-01-31 11:22:21,644 - INFO - Rows fetched: 0
+2026-01-31 12:10:17,137 - INFO - Using template sheet: 'Sheet1' for all tables
+2026-01-31 12:10:17,138 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'Sheet1' at position A16
+2026-01-31 12:10:17,138 - ERROR - Error adding table to sheet: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-31 12:10:17,138 - ERROR - Template export error: 'TablePosition' object has no attribute 'get_start_col_num'
+2026-01-31 12:10:17,144 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    ttk.Label(start_frame, text="Start Row:", font=('Segoe UI', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 10))
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-31 12:10:17,148 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 5341, in export
+    if template_path and os.path.exists(template_path):
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        # Analyze template
+        ^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2692, in export_tables_to_template
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\abcd.py", line 2729, in add_table_to_sheet
+    ttk.Label(start_frame, text="Start Row:", font=('Segoe UI', 10, 'bold')).pack(side=tk.LEFT, padx=(0, 10))
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'TablePosition' object has no attribute 'get_start_col_num'
+
+2026-01-31 12:44:00,094 - INFO - Using template sheet: 'LT VPI - 4197' for all tables
+2026-01-31 12:44:00,094 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:00,095 - INFO - Found 37 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:00,095 - INFO - Will skip writing to 37 merged cell ranges
+2026-01-31 12:44:00,095 - WARNING - Could not write header DATE_TIME to merged cell H1 or top-left: cannot access local variable 'value' where it is not associated with a value
+2026-01-31 12:44:00,099 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-31 12:44:00,224 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:00,224 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:00,225 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:00,225 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-31 12:44:00,228 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-31 12:44:00,332 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:00,332 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:00,333 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:00,333 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-31 12:44:00,335 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-31 12:44:00,473 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:00,474 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:00,474 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:00,475 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-31 12:44:00,475 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A4
+2026-01-31 12:44:00,475 - INFO - Wrote header PRO_START_TIME to top-left of merged cell: E2
+2026-01-31 12:44:00,476 - INFO - Wrote header PRO_STOP_TIME to top-left of merged cell: E2
+2026-01-31 12:44:00,477 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-31 12:44:00,486 - ERROR - Error adding table to sheet: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 12:44:00,486 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 12:44:00,490 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1262, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1580, in add_table_to_sheet
+    ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-31 12:44:00,494 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1262, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1580, in add_table_to_sheet
+    ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 4221, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1291, in export_tables_to_template
+    raise Exception(error_msg)
+Exception: Failed to export to template:
+
+• Error: 'MergedCell' object attribute 'value' is read-only
+
+Troubleshooting:
+1. Make sure the template file is not open in Excel
+2. Check file permissions
+3. Ensure the template is a valid .xlsx file (not .xls)
+4. Try saving to a different location
+
+2026-01-31 12:44:25,405 - INFO - Using template sheet: 'LT VPI - 4197' for all tables
+2026-01-31 12:44:25,405 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:25,406 - INFO - Found 37 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:25,406 - INFO - Will skip writing to 37 merged cell ranges
+2026-01-31 12:44:25,406 - WARNING - Could not write header DATE_TIME to merged cell H1 or top-left: cannot access local variable 'value' where it is not associated with a value
+2026-01-31 12:44:25,408 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-31 12:44:25,536 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:25,536 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:25,536 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:25,537 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-31 12:44:25,539 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-31 12:44:25,647 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:25,647 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:25,648 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:25,648 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-31 12:44:25,651 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-31 12:44:25,794 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:25,795 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:25,795 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:25,795 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-31 12:44:25,795 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A4
+2026-01-31 12:44:25,795 - INFO - Wrote header PRO_START_TIME to top-left of merged cell: E2
+2026-01-31 12:44:25,796 - INFO - Wrote header PRO_STOP_TIME to top-left of merged cell: E2
+2026-01-31 12:44:25,797 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-31 12:44:25,805 - ERROR - Error adding table to sheet: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 12:44:25,805 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 12:44:25,806 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1262, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1580, in add_table_to_sheet
+    ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-31 12:44:25,810 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1262, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1580, in add_table_to_sheet
+    ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 4221, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1291, in export_tables_to_template
+    raise Exception(error_msg)
+Exception: Failed to export to template:
+
+• Error: 'MergedCell' object attribute 'value' is read-only
+
+Troubleshooting:
+1. Make sure the template file is not open in Excel
+2. Check file permissions
+3. Ensure the template is a valid .xlsx file (not .xls)
+4. Try saving to a different location
+
+2026-01-31 12:44:50,881 - INFO - Using template sheet: 'LT VPI - 4197' for all tables
+2026-01-31 12:44:50,881 - INFO - Adding table 'dbo.BACKGROUND_DATA (68 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:50,882 - INFO - Found 37 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:50,882 - INFO - Will skip writing to 37 merged cell ranges
+2026-01-31 12:44:50,882 - WARNING - Could not write header DATE_TIME to merged cell H1 or top-left: cannot access local variable 'value' where it is not associated with a value
+2026-01-31 12:44:50,884 - INFO - Writing 17 column headers to row 16, starting at column 1
+2026-01-31 12:44:51,008 - INFO - Adding table 'dbo.BATCH_DATA (45 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:51,008 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:51,009 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:51,009 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-31 12:44:51,011 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-31 12:44:51,115 - INFO - Adding table 'dbo.BATCH_DATA2 (60 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:51,115 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:51,115 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:51,116 - INFO - Wrote header DATE_TIME to top-left of merged cell: E1
+2026-01-31 12:44:51,117 - INFO - Writing 22 column headers to row 16, starting at column 1
+2026-01-31 12:44:51,255 - INFO - Adding table 'dbo.HEADER (4 rows)' to template sheet 'LT VPI - 4197' at position A16
+2026-01-31 12:44:51,256 - INFO - Found 38 merged cell ranges in sheet 'LT VPI - 4197'
+2026-01-31 12:44:51,256 - INFO - Will skip writing to 38 merged cell ranges
+2026-01-31 12:44:51,256 - INFO - Wrote header BATCH_NAME to top-left of merged cell: A1
+2026-01-31 12:44:51,257 - INFO - Wrote header OPERATOR_NAME to top-left of merged cell: A4
+2026-01-31 12:44:51,257 - INFO - Wrote header PRO_START_TIME to top-left of merged cell: E2
+2026-01-31 12:44:51,257 - INFO - Wrote header PRO_STOP_TIME to top-left of merged cell: E2
+2026-01-31 12:44:51,258 - INFO - Writing 14 column headers to row 16, starting at column 1
+2026-01-31 12:44:51,267 - ERROR - Error adding table to sheet: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 12:44:51,267 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 12:44:51,268 - ERROR - Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1262, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1580, in add_table_to_sheet
+    ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+2026-01-31 12:44:51,271 - ERROR - Export error: Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1262, in export_tables_to_template
+    ExcelTableExporter.add_table_to_sheet(ws, table_data, pos)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1580, in add_table_to_sheet
+    ws.cell(row=info_row + 2, column=start_col_num + 1, value=len(columns))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\.venv\Lib\site-packages\openpyxl\worksheet\worksheet.py", line 246, in cell
+    cell.value = value
+    ^^^^^^^^^^
+AttributeError: 'MergedCell' object attribute 'value' is read-only
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 4221, in export
+    success = ExcelTableExporter.export_tables_to_template(
+        tables_data=self.tables_data,
+    ...<3 lines>...
+        output_path=file_path
+    )
+  File "C:\Users\waghm\OneDrive\Desktop\Scada_Report_generation\app.py", line 1291, in export_tables_to_template
+    raise Exception(error_msg)
+Exception: Failed to export to template:
+
+• Error: 'MergedCell' object attribute 'value' is read-only
+
+Troubleshooting:
+1. Make sure the template file is not open in Excel
+2. Check file permissions
+3. Ensure the template is a valid .xlsx file (not .xls)
+4. Try saving to a different location
+
+2026-01-31 15:28:38,361 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 15:28:44,409 - INFO - Excel file created: C:/Users/waghm/Downloads/TableExport_20260131_152842.xlsx
+2026-01-31 15:29:10,082 - ERROR - Template export error: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 15:35:03,349 - INFO - Excel file created: C:/Users/waghm/Downloads/TableExport_20260131_153500.xlsx
+2026-01-31 15:35:32,590 - INFO - Template exported: C:/Users/waghm/Downloads/TemplateExport_20260131_153530.xlsx
+2026-01-31 15:50:13,867 - INFO - Wrote SR_NO=1 to HT VPI - 4196!A3
+2026-01-31 15:50:13,867 - INFO - Wrote PROCESS_DESCRIPTION=DRY EVACUATION to HT VPI - 4196!A4
+2026-01-31 15:50:13,867 - ERROR - Failed to write to B3: 'MergedCell' object attribute 'value' is read-only
+2026-01-31 15:50:13,868 - INFO - Wrote BATCH_NAME=BATCH2 to HT VPI - 4196!C3
+2026-01-31 15:50:13,889 - INFO - Template exported: C:/Users/waghm/Downloads/TemplateExport_20260131_155011.xlsx
+2026-01-31 17:04:50,109 - INFO - Connected to MAHESHWAGH\WINCC.VPI1
+2026-01-31 17:04:50,142 - INFO - Retrieved 4 tables
+2026-01-31 17:05:04,846 - INFO - Retrieved 17 columns for table BACKGROUND_DATA
+2026-01-31 17:05:40,928 - INFO - Retrieved 22 columns for table BATCH_DATA
+2026-01-31 17:05:59,988 - INFO - Retrieved 22 columns for table BATCH_DATA2
+2026-01-31 17:06:10,424 - INFO - Retrieved 14 columns for table HEADER
+2026-01-31 17:06:42,575 - INFO - Retrieved 17 columns for table BACKGROUND_DATA
+2026-01-31 17:06:42,579 - INFO - Fetched 68 rows from BACKGROUND_DATA
+2026-01-31 17:06:42,583 - INFO - Retrieved 22 columns for table BATCH_DATA
+2026-01-31 17:06:42,588 - INFO - Fetched 45 rows from BATCH_DATA
+2026-01-31 17:06:42,592 - INFO - Retrieved 22 columns for table BATCH_DATA2
+2026-01-31 17:06:42,596 - INFO - Fetched 60 rows from BATCH_DATA2
+2026-01-31 17:06:42,599 - INFO - Retrieved 14 columns for table HEADER
+2026-01-31 17:06:42,602 - INFO - Fetched 4 rows from HEADER
+2026-01-31 17:06:42,830 - INFO - Wrote DATE_TIME=2024-10-29 16:49:00 to HT VPI - 4196!B4
+2026-01-31 17:06:42,830 - INFO - Wrote DATE_TIME=2024-10-29 16:49:00 to LT VPI - 4197!B4
+2026-01-31 17:06:42,831 - INFO - Wrote SR_NO=1 to LT VPI - 4197!D4
+2026-01-31 17:06:42,831 - INFO - Wrote SR_NO=1 to HT VPI - 4196!E10
+2026-01-31 17:06:42,832 - INFO - Wrote SR_NO=1 to LT VPI - 4197!E10
+2026-01-31 17:06:42,832 - INFO - Wrote ORDER_NAME=DUMMY to HT VPI - 4196!D4
+2026-01-31 17:06:42,833 - INFO - Wrote ORDER_NAME=DUMMY to LT VPI - 4197!D4
+2026-01-31 17:06:42,878 - INFO - Template exported: C:/Users/waghm/Downloads/TemplateExport_20260131_170637.xlsx
+2026-01-31 17:14:18,286 - INFO - Retrieved 17 columns for table BACKGROUND_DATA
