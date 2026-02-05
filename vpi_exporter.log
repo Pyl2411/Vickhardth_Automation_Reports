@@ -1,0 +1,17 @@
+2026-02-02 14:41:20,926 - INFO - Connecting to MAHESHWAGH\WINCC.VPI1
+2026-02-02 14:41:20,951 - INFO - [OK] Connected to MAHESHWAGH\WINCC.VPI1
+2026-02-02 14:41:20,960 - INFO - Retrieved 4 tables
+2026-02-02 14:41:43,582 - INFO - [FETCH] Fetching data from table: BACKGROUND_DATA
+2026-02-02 14:41:43,584 - INFO - [OK] Fetched 68 rows from BACKGROUND_DATA
+2026-02-02 14:41:53,233 - INFO - [FETCH] Fetching data from table: BATCH_DATA
+2026-02-02 14:41:53,235 - INFO - [OK] Fetched 45 rows from BATCH_DATA
+2026-02-02 14:41:58,011 - INFO - [FETCH] Fetching data from table: HEADER
+2026-02-02 14:41:58,012 - INFO - [OK] Fetched 4 rows from HEADER
+2026-02-02 14:42:03,867 - INFO - ============================================================
+2026-02-02 14:42:03,867 - INFO - [START] VPI TEMPLATE EXPORT
+2026-02-02 14:42:03,867 - INFO - ============================================================
+2026-02-02 14:42:03,868 - INFO - [COPY] Copying template...
+2026-02-02 14:42:03,870 - INFO - [LOAD] Loading workbook...
+2026-02-02 14:42:03,902 - INFO - [SHEET] Using High Tension sheet: HT VPI - 4196
+2026-02-02 14:42:03,902 - ERROR - [ERROR] Sheet 'HT VPI - 4196' not found in template
+2026-02-02 14:42:11,556 - INFO - [DISCONNECT] Disconnected from database
