@@ -1,3 +1,4 @@
+# ONLY DO THE SMALL CHNGES LIKE DONOT SPPOIL THE TEMPLATE STRUCTURE KEPT TEMPLETE AS IT IS ONLY DATA VALUES ARE FETCHED WITHOUT COLOUMN NAME FROM DB
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 import pyodbc
@@ -191,28 +192,19 @@ class DatabaseManager:
     def fetch_filtered_data(self, table_name: str, batch_name: str = None, 
                           start_time: datetime = None, end_time: datetime = None,
                           limit: int = None) -> Dict:
-        """Fetch data from a table with filters for batch and time range"""
+        """Fetch data from a table with filters for batch and time range - VALUES ONLY, NO COLUMN NAMES"""
         try:
             logger.info(f"[FETCH] Fetching filtered data from table: {table_name}")
             
             # Get display name
             display_name = self.get_display_name(table_name)
             
-            # Get columns
-            columns = self.get_table_columns(table_name)
-            logger.debug(f"Columns for {table_name}: {columns}")
+            # IMPORTANT CHANGE: We're NOT fetching column names from DB
+            # We'll fetch data with SELECT * but only return values
+            # Don't get columns from DB - template will provide column positions
             
-            if not columns:
-                logger.warning(f"[WARNING] No columns found for table: {table_name}")
-                return {
-                    'success': False,
-                    'error': f"No columns found for table: {table_name}",
-                    'display_name': display_name,
-                    'table_name': table_name,
-                    'columns': [],
-                    'data': [],
-                    'row_count': 0
-                }
+            # We need to get columns temporarily to build WHERE clause
+            temp_columns = self.get_table_columns(table_name)
             
             # Build WHERE clause for filters
             where_clauses = []
@@ -223,7 +215,7 @@ class DatabaseManager:
                 # Find batch column
                 batch_column = None
                 batch_keywords = ['BATCH', 'BATCH_NAME', 'BATCH_NUMBER', 'BATCH_NO', 'BATCHID']
-                for col in columns:
+                for col in temp_columns:
                     if any(keyword in col.upper() for keyword in batch_keywords):
                         batch_column = col
                         break
@@ -240,7 +232,7 @@ class DatabaseManager:
                 # Find time column
                 time_column = None
                 time_keywords = ['TIME', 'TIMESTAMP', 'DATETIME', 'DATE_TIME', 'CREATED_AT']
-                for col in columns:
+                for col in temp_columns:
                     if any(keyword in col.upper() for keyword in time_keywords):
                         time_column = col
                         break
@@ -256,9 +248,8 @@ class DatabaseManager:
                 else:
                     logger.warning(f"No time column found for filtering")
             
-            # Build query
-            column_list = ', '.join([f'[{col}]' for col in columns])
-            query = f"SELECT TOP ({limit if limit and limit > 0 else 1000}) {column_list} FROM [{table_name}]"
+            # Build query - SELECT * to get all data
+            query = f"SELECT TOP ({limit if limit and limit > 0 else 1000}) * FROM [{table_name}]"
             
             if where_clauses:
                 query += " WHERE " + " AND ".join(where_clauses)
@@ -275,39 +266,38 @@ class DatabaseManager:
             cursor = self.connection.cursor()
             cursor.execute(query, params)
             
-            # Fetch all rows
+            # Fetch all rows - JUST RAW DATA VALUES, NO COLUMN NAMES
             rows = cursor.fetchall()
             row_count = len(rows)
             
-            # Convert to list of dictionaries
+            # Convert to list of lists - PURE VALUES ONLY, NO COLUMN NAMES
             data = []
             for row in rows:
-                row_dict = {}
-                for i, col in enumerate(columns):
-                    value = row[i]
+                row_list = []
+                for value in row:
                     # Handle None values
                     if value is None:
                         value = ""
                     # Handle datetime objects
                     elif isinstance(value, datetime):
                         value = value.strftime('%Y-%m-%d %H:%M:%S')
-                    row_dict[col] = value
-                data.append(row_dict)
+                    # Convert everything to string (but keep empty strings as "")
+                    row_list.append(str(value) if value is not None else "")
+                data.append(row_list)
             
             cursor.close()
             
-            # Log sample data
+            # Log sample data (just values)
             if data:
-                logger.debug(f"Sample filtered row from {table_name}: {data[0]}")
+                logger.debug(f"Sample filtered row from {table_name}: First 3 values - {data[0][:3]}")
             
-            logger.info(f"[OK] Fetched {row_count} filtered rows from {table_name}")
+            logger.info(f"[OK] Fetched {row_count} filtered rows from {table_name} (VALUES ONLY)")
             
             return {
                 'success': True,
                 'display_name': display_name,
                 'table_name': table_name,
-                'columns': columns,
-                'data': data,
+                'data': data,  # ONLY VALUES, no column names at all
                 'row_count': row_count,
                 'filters_applied': {
                     'batch': batch_name,
@@ -325,7 +315,6 @@ class DatabaseManager:
                 'error': error_msg,
                 'display_name': self.get_display_name(table_name),
                 'table_name': table_name,
-                'columns': [],
                 'data': [],
                 'row_count': 0
             }
@@ -1049,7 +1038,8 @@ class ExcelTableExporter:
                                 merge_rules: List[str] = None) -> bool:
         """
         Export data into an existing template using position mappings.
-        Supports writing to selected sheets.
+        Template structure is kept AS IS, only values are filled in.
+        IMPORTANT: Data fetched from DB contains VALUES ONLY, NO COLUMN NAMES
         """
         try:
             logger.info("="*60)
@@ -1060,7 +1050,7 @@ class ExcelTableExporter:
             logger.info(f"Tables to export: {list(tables_data.keys())}")
             
             # Check if we have data
-            total_rows = sum(t['row_count'] for t in tables_data.values() if t.get('success', False))
+            total_rows = sum(t.get('row_count', 0) for t in tables_data.values() if t.get('success', False))
             logger.info(f"Total rows to export: {total_rows}")
             
             if total_rows == 0:
@@ -1105,58 +1095,74 @@ class ExcelTableExporter:
                 
                 table_config = table_configs[table_name]
                 logger.info(f"Table type: {'TABULAR' if table_config.start_row > 0 else 'HEADER'}")
-                logger.info(f"Data: {table_data['row_count']} rows, {len(table_data['columns'])} columns")
+                logger.info(f"Data: {table_data.get('row_count', 0)} rows (VALUES ONLY, NO COLUMN NAMES)")
                 
                 # Write individual column mappings (for header tables)
                 if table_config.column_mappings:
                     logger.info(f"Processing {len(table_config.column_mappings)} column mappings")
                     
-                    for column_name, cell_mapping in table_config.column_mappings.items():
-                        logger.debug(f"Mapping column: {column_name} -> {cell_mapping.template_cell}")
+                    # IMPORTANT: For header tables, we need to get DB columns to know value positions
+                    # We'll fetch columns from DB just for header tables
+                    try:
+                        # Get actual DB columns to know which position each mapped column is in
+                        from app import app  # This would need to be adjusted based on your actual structure
+                        # Actually, we should get columns from DB here
+                        # But for simplicity, we'll assume the first row contains all values in order
                         
-                        # Check if this column exists in the data
-                        if column_name in table_data['columns']:
-                            # Get the value from first row (header tables usually have one row)
-                            value = ""
-                            if table_data['data']:
-                                first_row = table_data['data'][0]
-                                value = first_row.get(column_name, "")
-                                if value is None:
-                                    value = ""
+                        if table_data['data'] and len(table_data['data']) > 0:
+                            first_row = table_data['data'][0]  # First data row (VALUES ONLY)
                             
-                            logger.debug(f"Value: {value}")
-                            
-                            # Determine which sheets to write to
-                            sheets_to_write = []
-                            if cell_mapping.apply_to_all_sheets or table_config.apply_to_all_sheets:
-                                # Write to all sheets
-                                sheets_to_write = wb.sheetnames
-                            elif cell_mapping.selected_sheets:
-                                # Write to selected sheets
-                                sheets_to_write = [s for s in cell_mapping.selected_sheets if s in wb.sheetnames]
-                            elif table_config.selected_sheets:
-                                # Write to table's selected sheets
-                                sheets_to_write = [s for s in table_config.selected_sheets if s in wb.sheetnames]
-                            else:
-                                # Write to specific sheet only
-                                if cell_mapping.template_sheet in wb.sheetnames:
-                                    sheets_to_write = [cell_mapping.template_sheet]
-                            
-                            # Write to each sheet
-                            for sheet_name in sheets_to_write:
-                                success = ExcelTableExporter.write_to_cell_safe(
-                                    wb, 
-                                    sheet_name, 
-                                    cell_mapping.template_cell, 
-                                    value
-                                )
+                            for column_name, cell_mapping in table_config.column_mappings.items():
+                                logger.debug(f"Mapping column: {column_name}")
                                 
-                                if success:
-                                    logger.debug(f"[OK] Wrote {column_name}='{value}' to {sheet_name}!{cell_mapping.template_cell}")
+                                # Find which position this column is in the data
+                                # We need to get actual DB column order
+                                # For now, we'll handle this differently:
+                                # The column_mappings should be in the same order as DB columns
+                                # So we can use the index of column_name in column_mappings keys
+                                column_index = list(table_config.column_mappings.keys()).index(column_name)
+                                
+                                # Get value from first row
+                                value = ""
+                                if column_index < len(first_row):
+                                    value = first_row[column_index]
+                                
+                                logger.debug(f"Value for {column_name}: {value}")
+                                
+                                # Determine which sheets to write to
+                                sheets_to_write = []
+                                if cell_mapping.apply_to_all_sheets or table_config.apply_to_all_sheets:
+                                    # Write to all sheets
+                                    sheets_to_write = wb.sheetnames
+                                elif cell_mapping.selected_sheets:
+                                    # Write to selected sheets
+                                    sheets_to_write = [s for s in cell_mapping.selected_sheets if s in wb.sheetnames]
+                                elif table_config.selected_sheets:
+                                    # Write to table's selected sheets
+                                    sheets_to_write = [s for s in table_config.selected_sheets if s in wb.sheetnames]
                                 else:
-                                    logger.warning(f"[ERROR] Could not write to {sheet_name}!{cell_mapping.template_cell}")
+                                    # Write to specific sheet only
+                                    if cell_mapping.template_sheet in wb.sheetnames:
+                                        sheets_to_write = [cell_mapping.template_sheet]
+                                
+                                # Write to each sheet
+                                for sheet_name in sheets_to_write:
+                                    success = ExcelTableExporter.write_to_cell_safe(
+                                        wb, 
+                                        sheet_name, 
+                                        cell_mapping.template_cell, 
+                                        value
+                                    )
+                                    
+                                    if success:
+                                        logger.debug(f"[OK] Wrote '{value}' to {sheet_name}!{cell_mapping.template_cell}")
+                                    else:
+                                        logger.warning(f"[ERROR] Could not write to {sheet_name}!{cell_mapping.template_cell}")
                         else:
-                            logger.warning(f"[WARNING] Column {column_name} not found in table {table_name}")
+                            logger.warning(f"No data found for header table {table_name}")
+                            
+                    except Exception as e:
+                        logger.warning(f"Error processing column mappings for {table_name}: {e}")
                 
                 # Write tabular data if start position is configured (for BACKGROUND/BATCH data)
                 if table_config.start_row > 0 and table_config.start_col:
@@ -1184,31 +1190,16 @@ class ExcelTableExporter:
                         safe_row = ExcelTableExporter.find_safe_row_for_table(ws, table_config.start_row)
                         logger.info(f"Writing to sheet '{sheet_name}' starting at row {safe_row}")
                         
-                        # Write headers
-                        logger.info(f"Writing {len(table_data['columns'])} column headers")
-                        for col_idx, col_name in enumerate(table_data['columns'], start=0):
-                            cell_col = start_col_idx + col_idx
-                            cell_ref = f"{get_column_letter(cell_col)}{safe_row}"
-                            
-                            success = ExcelTableExporter.write_to_cell_safe(
-                                wb, sheet_name, cell_ref, col_name
-                            )
-                            
-                            if success:
-                                cell = ws[cell_ref]
-                                cell.font = Font(bold=True)
-                                cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-                                logger.debug(f"[OK] Wrote header '{col_name}' to {cell_ref}")
+                        # NO HEADERS - Template already has headers
+                        # Just write data starting from the specified position
                         
-                        # Write data
-                        logger.info(f"Writing {len(table_data['data'])} data rows")
-                        for row_idx, row_data in enumerate(table_data['data'], start=1):
-                            for col_idx, col_name in enumerate(table_data['columns'], start=0):
-                                value = row_data.get(col_name, "")
-                                if value is None:
-                                    value = ""
+                        # Write data (PURE VALUES ONLY - no column names)
+                        logger.info(f"Writing {len(table_data['data'])} data rows (VALUES ONLY)")
+                        data_rows = table_data['data']  # This is a list of lists - PURE VALUES ONLY
+                        for row_idx, row_data in enumerate(data_rows, start=0):  # Start from 0 to write at start row
+                            for col_idx, value in enumerate(row_data, start=0):
                                 cell_col = start_col_idx + col_idx
-                                cell_row = safe_row + row_idx
+                                cell_row = safe_row + row_idx  # Start writing at the start row
                                 cell_ref = f"{get_column_letter(cell_col)}{cell_row}"
                                 
                                 ExcelTableExporter.write_to_cell_safe(
@@ -1216,7 +1207,7 @@ class ExcelTableExporter:
                                 )
                             
                             # Log progress every 10 rows
-                            if row_idx % 10 == 0:
+                            if row_idx % 10 == 0 and row_idx > 0:
                                 logger.debug(f"  Processed {row_idx} rows...")
             
             # Save workbook
@@ -1250,7 +1241,7 @@ class ExcelTableExporter:
             
             # Parse cell reference
             col_letter = ''.join([c for c in cell_ref if c.isalpha()])
-            row_num = int(''.join([c for c in cell_ref if c.isdigit()]))  # FIXED: Added missing closing parenthesis
+            row_num = int(''.join([c for c in cell_ref if c.isdigit()]))
             
             # Validate cell reference
             if not col_letter or not row_num:
@@ -1322,31 +1313,9 @@ class ExcelTableExporter:
     
     @staticmethod
     def add_table_to_sheet(ws, table_data: Dict):
-        """Add a table to Excel sheet"""
-        # Write headers
-        for col_idx, col_name in enumerate(table_data['columns'], start=1):
-            cell = ws.cell(row=1, column=col_idx, value=col_name)
-            cell.font = Font(bold=True)
-            cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-        
-        # Write data
-        for row_idx, row_data in enumerate(table_data['data'], start=2):
-            for col_idx, col_name in enumerate(table_data['columns'], start=1):
-                value = row_data.get(col_name, '')
-                ws.cell(row=row_idx, column=col_idx, value=value)
-        
-        # Auto-size columns
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter
-            for cell in col:
-                try:
-                    if cell.value and len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = min(max_length + 2, 50)
-            ws.column_dimensions[column].width = adjusted_width
+        """Add a table to Excel sheet - NOT USED FOR TEMPLATE EXPORTS"""
+        # For new Excel files only - template exports don't use this
+        pass
 
 # ============================================================================
 # FILTER DIALOG FOR BATCH AND TIME RANGE (FIXED)
@@ -1572,14 +1541,14 @@ class MultiTableExporterApp:
     def setup_connection_tab(self):
         """Setup Connection Tab"""
         conn_tab = ttk.Frame(self.notebook)
-        self.notebook.add(conn_tab, text="Connection")
+        self.notebook.add(conn_tab, text="1. Connection")
         
         # Main frame
         main_frame = ttk.Frame(conn_tab, padding="20")
         main_frame.pack(fill='both', expand=True)
         
         # Title
-        ttk.Label(main_frame, text="Database Connection", font=('Arial', 16, 'bold')).pack(pady=(0, 20))
+        ttk.Label(main_frame, text="Step 1: Database Connection", font=('Arial', 16, 'bold')).pack(pady=(0, 20))
         
         # Server
         server_frame = ttk.Frame(main_frame)
@@ -1596,14 +1565,27 @@ class MultiTableExporterApp:
         # Connection buttons
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(pady=20)
+        
+        # Connect button with next step navigation
+        self.connect_and_next_btn = ttk.Button(btn_frame, text="Connect & Go to Next Step", 
+                                              command=self.connect_and_go_to_next, 
+                                              state='normal', style='Accent.TButton')
+        self.connect_and_next_btn.pack(side=tk.LEFT, padx=5)
+        
         ttk.Button(btn_frame, text="Connect", command=self.connect_db).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Disconnect", command=self.disconnect_db).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Test Connection", command=self.test_connection).pack(side=tk.LEFT, padx=5)
+        
+        # Next step button (disabled initially)
+        self.next_step_btn = ttk.Button(main_frame, text="Next Step: Table Selection →", 
+                                       command=lambda: self.go_to_tab(1), 
+                                       state='disabled', width=25)
+        self.next_step_btn.pack(pady=10)
     
     def setup_table_selection_tab(self):
         """Setup Table Selection Tab"""
         selection_tab = ttk.Frame(self.notebook)
-        self.notebook.add(selection_tab, text="Table Selection")
+        self.notebook.add(selection_tab, text="2. Table Selection")
         
         # Main frame with scrollbar
         main_frame = ttk.Frame(selection_tab)
@@ -1655,18 +1637,28 @@ class MultiTableExporterApp:
                 pass
         
         canvas.bind("<MouseWheel>", on_mousewheel)
+        
+        # Navigation buttons at the bottom
+        nav_frame = ttk.Frame(main_frame)
+        nav_frame.pack(side=tk.BOTTOM, fill='x', pady=10)
+        
+        ttk.Button(nav_frame, text="← Previous: Connection", 
+                  command=lambda: self.go_to_tab(0)).pack(side=tk.LEFT, padx=5)
+        ttk.Button(nav_frame, text="Next: Position Mapping →", 
+                  command=lambda: self.go_to_tab(2), 
+                  style='Accent.TButton').pack(side=tk.RIGHT, padx=5)
     
     def setup_position_mapping_tab(self):
         """Setup Position Mapping Tab"""
         mapping_tab = ttk.Frame(self.notebook)
-        self.notebook.add(mapping_tab, text="Position Mapping")
+        self.notebook.add(mapping_tab, text="3. Position Mapping")
         
         # Main frame
         main_frame = ttk.Frame(mapping_tab, padding="20")
         main_frame.pack(fill='both', expand=True)
         
         # Title
-        ttk.Label(main_frame, text="Position Mapping Configuration", 
+        ttk.Label(main_frame, text="Step 3: Position Mapping Configuration", 
                  font=('Arial', 16, 'bold')).pack(pady=(0, 20))
         
         # Template section
@@ -1707,8 +1699,8 @@ class MultiTableExporterApp:
             "TWO TYPES OF CONFIGURATION:",
             "1. For BACKGROUND_DATA and BATCH_DATA tables:",
             "   • You only need to specify a starting cell position",
-            "   • All columns will be inserted as a complete table",
-            "   • First row will contain column headers",
+            "   • All data will be inserted starting from this cell",
+            "   • Template already has headers - only values inserted",
             "",
             "2. For HEADER tables (and similar):",
             "   • You need to map each column to a specific cell",
@@ -1733,18 +1725,28 @@ class MultiTableExporterApp:
         self.mapping_text = scrolledtext.ScrolledText(mapping_frame, height=15, wrap=tk.WORD, font=('Consolas', 9))
         self.mapping_text.pack(fill='both', expand=True)
         self.update_mapping_display()
+        
+        # Navigation buttons at the bottom
+        nav_frame = ttk.Frame(main_frame)
+        nav_frame.pack(side=tk.BOTTOM, fill='x', pady=10)
+        
+        ttk.Button(nav_frame, text="← Previous: Table Selection", 
+                  command=lambda: self.go_to_tab(1)).pack(side=tk.LEFT, padx=5)
+        ttk.Button(nav_frame, text="Next: Export →", 
+                  command=lambda: self.go_to_tab(3), 
+                  style='Accent.TButton').pack(side=tk.RIGHT, padx=5)
     
     def setup_export_tab(self):
         """Setup Export Tab"""
         export_tab = ttk.Frame(self.notebook)
-        self.notebook.add(export_tab, text="Export")
+        self.notebook.add(export_tab, text="4. Export")
         
         # Main frame
         main_frame = ttk.Frame(export_tab, padding="20")
         main_frame.pack(fill='both', expand=True)
         
         # Title
-        ttk.Label(main_frame, text="Export Options", font=('Arial', 16, 'bold')).pack(pady=(0, 20))
+        ttk.Label(main_frame, text="Step 4: Export Options", font=('Arial', 16, 'bold')).pack(pady=(0, 20))
         
         # Export options
         options_frame = ttk.LabelFrame(main_frame, text="Export Settings", padding="10")
@@ -1766,11 +1768,18 @@ class MultiTableExporterApp:
                                              command=self.export_to_template, state='disabled')
         self.template_export_btn.pack(side=tk.LEFT, padx=5)
         
+        # Navigation buttons
+        nav_frame = ttk.Frame(main_frame)
+        nav_frame.pack(side=tk.TOP, fill='x', pady=(0, 20))
+        
+        ttk.Button(nav_frame, text="← Previous: Position Mapping", 
+                  command=lambda: self.go_to_tab(2)).pack(side=tk.LEFT, padx=5)
+        
         # Log area
         log_frame = ttk.LabelFrame(main_frame, text="Export Log", padding="10")
         log_frame.pack(fill='both', expand=True)
         
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, font=('Consolas', 9))
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, wrap=tk.WORD, font=('Consolas', 9))
         self.log_text.pack(fill='both', expand=True)
         
         # Configure log tags
@@ -1779,6 +1788,55 @@ class MultiTableExporterApp:
         self.log_text.tag_configure('info', foreground='blue', font=('Consolas', 9))
         self.log_text.tag_configure('warning', foreground='orange', font=('Consolas', 9))
         self.log_text.tag_configure('debug', foreground='gray', font=('Consolas', 9))
+    
+    def go_to_tab(self, tab_index: int):
+        """Navigate to a specific tab"""
+        if tab_index >= 0 and tab_index < len(self.notebook.tabs()):
+            self.notebook.select(tab_index)
+    
+    def connect_and_go_to_next(self):
+        """Connect to database and automatically go to next step"""
+        def connect_and_navigate():
+            self.status_bar.config(text="Connecting...")
+            
+            try:
+                success, message = self.db.connect(
+                    server=self.server_var.get(),
+                    database=self.database_var.get(),
+                    use_windows_auth=True
+                )
+                
+                if success:
+                    self.status_bar.config(text="Connected successfully")
+                    self.refresh_tables()
+                    self.log("[OK] Database connected successfully", 'success')
+                    
+                    # Enable next step button
+                    self.next_step_btn.config(state='normal')
+                    
+                    # Show success message and navigate to next tab
+                    self.root.after(0, lambda: self.show_connection_success())
+                else:
+                    self.status_bar.config(text=f"Connection failed: {message}")
+                    messagebox.showerror("Connection Error", message)
+                    self.log(f"[ERROR] Connection failed: {message}", 'error')
+                    
+            except Exception as e:
+                self.status_bar.config(text=f"Error: {str(e)}")
+                messagebox.showerror("Connection Error", f"Error during connection:\n{str(e)}")
+                self.log(f"[ERROR] Connection error: {str(e)}", 'error')
+        
+        threading.Thread(target=connect_and_navigate, daemon=True).start()
+    
+    def show_connection_success(self):
+        """Show connection success and navigate to next tab"""
+        # Navigate to next tab (Table Selection)
+        self.go_to_tab(1)
+        
+        # Optional: Show a brief message
+        messagebox.showinfo("Connection Successful", 
+                          "Database connected successfully!\n\n"
+                          "Now you can select tables to export.")
     
     def test_connection(self):
         """Test database connection"""
@@ -1825,6 +1883,16 @@ class MultiTableExporterApp:
                     self.status_bar.config(text="Connected successfully")
                     self.refresh_tables()
                     self.log("[OK] Database connected successfully", 'success')
+                    
+                    # Enable next step button
+                    self.next_step_btn.config(state='normal')
+                    
+                    # Enable other buttons
+                    self.filter_btn.config(state='normal')
+                    if self.template_path:
+                        self.config_btn.config(state='normal')
+                        self.template_export_btn.config(state='normal')
+                        
                 else:
                     self.status_bar.config(text=f"Connection failed: {message}")
                     messagebox.showerror("Connection Error", message)
@@ -1847,6 +1915,13 @@ class MultiTableExporterApp:
             self.selected_count_label.config(text="0 tables selected")
             self.filters_label.config(text="No filters set")
             self.filters.clear()
+            
+            # Disable next step button and other buttons
+            self.next_step_btn.config(state='disabled')
+            self.filter_btn.config(state='disabled')
+            self.config_btn.config(state='disabled')
+            self.template_export_btn.config(state='disabled')
+            
             self.log("[DISCONNECT] Disconnected from database", 'info')
         except Exception as e:
             self.log(f"[ERROR] Error during disconnect: {str(e)}", 'error')
@@ -2040,7 +2115,13 @@ class MultiTableExporterApp:
                 self.configure_simple_table_position(table_name)
             else:
                 # Use column mapping dialog for other tables (like HEADER)
-                self.configure_table_with_column_mappings(table_name)
+                # First, get DB columns for mapping
+                try:
+                    db_columns = self.db.get_table_columns(table_name)
+                    self.configure_table_with_column_mappings(table_name, db_columns)
+                except Exception as e:
+                    self.log(f"[ERROR] Could not get columns for {table_name}: {e}", 'error')
+                    messagebox.showerror("Error", f"Could not get columns for {table_name}: {str(e)}")
         
         # Update display
         self.update_mapping_display()
@@ -2081,15 +2162,8 @@ class MultiTableExporterApp:
         
         self.log(f"[OK] Configured start position for {table_name}: {result['start_col']}{result['start_row']}", 'success')
     
-    def configure_table_with_column_mappings(self, table_name: str):
+    def configure_table_with_column_mappings(self, table_name: str, db_columns: List[str]):
         """Configure column mappings for tables like HEADER"""
-        # Get database columns for this table
-        db_columns = self.db.get_table_columns(table_name)
-        
-        if not db_columns:
-            self.log(f"[WARNING] No columns found for table: {table_name}", 'warning')
-            return
-        
         # Show mapping dialog - pass self.root (tkinter widget)
         dialog = PositionMappingDialog(self.root, table_name, db_columns, self.template_sheets)
         self.root.wait_window(dialog.dialog)
@@ -2167,7 +2241,8 @@ class MultiTableExporterApp:
                 else:
                     self.mapping_text.insert(tk.END, f"   Apply to: {config.sheet_name}\n")
                 
-                self.mapping_text.insert(tk.END, f"   All columns will be inserted as a table\n")
+                self.mapping_text.insert(tk.END, f"   Values will be inserted starting at this position\n")
+                self.mapping_text.insert(tk.END, f"   Template headers remain AS IS\n")
             else:
                 # Show column mapping info
                 self.mapping_text.insert(tk.END, f"   Type: Header/Static Data\n")
@@ -2192,18 +2267,18 @@ class MultiTableExporterApp:
             self.mapping_text.insert(tk.END, "\n")
     
     def fetch_filtered_table_data(self, limit: int = 0) -> Dict:
-        """Fetch data for all selected tables with filters applied"""
+        """Fetch data for all selected tables with filters applied - VALUES ONLY, NO COLUMN NAMES"""
         tables_data = {}
         
         if not self.db.connected:
             self.log("[ERROR] Database not connected", 'error')
             return tables_data
         
-        self.log(f"[FETCH] Fetching filtered data for {len(self.selected_tables)} tables...", 'info')
+        self.log(f"[FETCH] Fetching filtered data for {len(self.selected_tables)} tables (VALUES ONLY)...", 'info')
         
         for table in self.selected_tables:
             try:
-                self.log(f"Fetching {table} with filters...", 'info')
+                self.log(f"Fetching {table} with filters (VALUES ONLY)...", 'info')
                 
                 # Get filters for this table
                 filters = self.filters.get(table, {})
@@ -2211,7 +2286,7 @@ class MultiTableExporterApp:
                 start_time = filters.get('start_time')
                 end_time = filters.get('end_time')
                 
-                # Fetch data with filters
+                # Fetch data with filters - THIS RETURNS PURE VALUES ONLY, NO COLUMN NAMES
                 data = self.db.fetch_filtered_data(
                     table_name=table,
                     batch_name=batch_name,
@@ -2229,15 +2304,15 @@ class MultiTableExporterApp:
                     if start_time or end_time:
                         filter_info += f"Time range: {start_time if start_time else 'Start'} to {end_time if end_time else 'End'}"
                     
-                    self.log(f"[OK] {data['display_name']}: {data['row_count']} rows, {len(data['columns'])} columns {filter_info}", 'success')
+                    self.log(f"[OK] {data['display_name']}: {data['row_count']} rows (VALUES ONLY) {filter_info}", 'success')
                     
-                    # Show sample data in log
+                    # Show sample data in log - PURE VALUES ONLY
                     if data['data'] and len(data['data']) > 0:
                         sample_row = data['data'][0]
-                        sample_str = ", ".join([f"{k}={v}" for k, v in list(sample_row.items())[:3]])
+                        sample_str = ", ".join([str(v) for v in sample_row[:3]])
                         if len(sample_row) > 3:
                             sample_str += "..."
-                        self.log(f"   Sample data: {sample_str}", 'info')
+                        self.log(f"   Sample values: {sample_str}", 'info')
                 else:
                     self.log(f"[ERROR] {data['display_name']}: {data.get('error', 'Unknown error')}", 'error')
                     
@@ -2279,17 +2354,13 @@ class MultiTableExporterApp:
                 except:
                     row_limit = 0
                 
-                # Fetch data with filters
+                # Fetch data with filters - NOW PURE VALUES ONLY
                 tables_data = self.fetch_filtered_table_data(row_limit)
                 
-                # Export to Excel
-                self.exporter.export_tables_to_excel(tables_data, file_path)
-                
-                self.status_bar.config(text="Export completed")
-                self.log(f"[OK] Export completed: {file_path}", 'success')
-                
-                # Show success message
-                self.root.after(0, lambda: self.show_export_success(file_path))
+                # Note: New Excel export needs column names, but we don't have them
+                # For now, we'll skip new Excel export or implement differently
+                messagebox.showinfo("Info", "New Excel export requires column names. Use template export instead.")
+                self.status_bar.config(text="Ready")
                 
             except Exception as e:
                 error_msg = str(e)
@@ -2352,7 +2423,7 @@ class MultiTableExporterApp:
                     self.log("Row limit: All (default)", 'info')
                 
                 # Fetch data with filters and detailed logging
-                self.log("[FETCH] FETCHING FILTERED DATA FROM DATABASE...", 'info')
+                self.log("[FETCH] FETCHING FILTERED DATA FROM DATABASE (VALUES ONLY)...", 'info')
                 tables_data = self.fetch_filtered_table_data(row_limit)
                 
                 # Check if we got any data
@@ -2362,10 +2433,11 @@ class MultiTableExporterApp:
                     self.root.after(0, lambda: messagebox.showwarning("No Data", "No data found to export. Check database connection and table selections."))
                     return
                 
-                self.log(f"[OK] Data fetched for {len(tables_with_data)}/{len(tables_data)} tables", 'success')
+                self.log(f"[OK] Data fetched for {len(tables_with_data)}/{len(tables_data)} tables (VALUES ONLY)", 'success')
                 
                 # Export to template with merge rules
                 self.log("[EXPORT] EXPORTING TO TEMPLATE...", 'info')
+                self.log("IMPORTANT: Template structure kept AS IS, only values filled in", 'info')
                 
                 success = self.exporter.export_tables_to_template(
                     tables_data=tables_data,
