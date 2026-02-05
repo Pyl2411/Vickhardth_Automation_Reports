@@ -1,5 +1,15 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox, scrolledtext, filedialog
+    HAS_TK = True
+except Exception:
+    HAS_TK = False
+
+if not HAS_TK:
+    raise RuntimeError(
+        "Tkinter not available in this Python environment. "
+        "Run the app locally with a Python build that includes Tcl/Tk, "
+        "or convert the UI for cloud deployment (Streamlit/Flask).")
 import pyodbc
 import json
 import os

@@ -1,4 +1,4 @@
-# ONLY DO THE SMALL CHNGES LIKE DONOT SPPOIL THE TEMPLATE STRUCTURE KEPT TEMPLETE AS IT IS ONLY DATA VALUES ARE FETCHED WITHOUT COLOUMN NAME FROM DB
+# XYZ.py - Complete Tkinter Table Exporter Application
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 import pyodbc
@@ -1105,8 +1105,6 @@ class ExcelTableExporter:
                     # We'll fetch columns from DB just for header tables
                     try:
                         # Get actual DB columns to know which position each mapped column is in
-                        from app import app  # This would need to be adjusted based on your actual structure
-                        # Actually, we should get columns from DB here
                         # But for simplicity, we'll assume the first row contains all values in order
                         
                         if table_data['data'] and len(table_data['data']) > 0:
@@ -1116,8 +1114,6 @@ class ExcelTableExporter:
                                 logger.debug(f"Mapping column: {column_name}")
                                 
                                 # Find which position this column is in the data
-                                # We need to get actual DB column order
-                                # For now, we'll handle this differently:
                                 # The column_mappings should be in the same order as DB columns
                                 # So we can use the index of column_name in column_mappings keys
                                 column_index = list(table_config.column_mappings.keys()).index(column_name)
