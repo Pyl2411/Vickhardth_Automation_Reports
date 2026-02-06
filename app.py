@@ -6,7 +6,7 @@ Description: Streamlit application to export SQL Server tables to Excel template
 """
 
 # ============================================================================
-# IMPORTS
+# IMPORTS (SIMPLIFIED FOR RENDER)
 # ============================================================================
 import streamlit as st
 import pandas as pd
@@ -26,16 +26,9 @@ from io import BytesIO
 import json
 from typing import Dict, List, Optional, Any, Tuple
 
-# Try to import database connectors
+# Database imports - using SQLAlchemy only (works with Python 3.12/3.13)
 try:
-    import pyodbc
-    PYODBC_AVAILABLE = True
-except ImportError:
-    PYODBC_AVAILABLE = False
-    st.warning("pyodbc not available. Using SQLAlchemy fallback.")
-
-try:
-    from sqlalchemy import create_engine, text, URL
+    from sqlalchemy import create_engine, text
     from sqlalchemy.exc import SQLAlchemyError
     SQLALCHEMY_AVAILABLE = True
 except ImportError:
@@ -56,11 +49,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# DATABASE MANAGER WITH MULTI-ENGINE SUPPORT
+# DATABASE MANAGER USING SQLALCHEMY ONLY
 # ============================================================================
 
 class DatabaseManager:
-    """Manages database connections using multiple engines with fallback support"""
+    """Manages database connections using SQLAlchemy"""
     
     def __init__(self):
         self.connection = None
@@ -68,80 +61,33 @@ class DatabaseManager:
         self.connected = False
         self.server = None
         self.database = None
-        self.connection_method = None  # 'pyodbc' or 'sqlalchemy'
     
-    def connect_pyodbc(self, server: str, database: str, 
-                      username: str = None, password: str = None,
-                      use_windows_auth: bool = True,
-                      encrypt: bool = True,
-                      trust_server_cert: bool = True) -> Tuple[bool, str]:
-        """Connect using pyodbc"""
-        if not PYODBC_AVAILABLE:
-            return False, "pyodbc not installed"
-        
-        try:
-            logger.info(f"Attempting pyodbc connection to {server}.{database}")
-            
-            # Build connection string
-            if use_windows_auth:
-                conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
-            else:
-                conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};"
-            
-            # Add SSL/encryption options
-            if encrypt:
-                conn_str += "Encrypt=yes;"
-            else:
-                conn_str += "Encrypt=no;"
-            
-            if trust_server_cert:
-                conn_str += "TrustServerCertificate=yes;"
-            
-            logger.debug(f"Connection string: {conn_str}")
-            
-            self.connection = pyodbc.connect(conn_str, timeout=30)
-            self.connected = True
-            self.server = server
-            self.database = database
-            self.connection_method = 'pyodbc'
-            
-            logger.info(f"[OK] pyodbc connection successful")
-            return True, "Connection successful"
-            
-        except Exception as e:
-            error_msg = f"pyodbc connection error: {str(e)}"
-            logger.error(error_msg)
-            return False, error_msg
-    
-    def connect_sqlalchemy(self, server: str, database: str,
-                          username: str = None, password: str = None,
-                          use_windows_auth: bool = True,
-                          driver: str = "ODBC Driver 17 for SQL Server") -> Tuple[bool, str]:
-        """Connect using SQLAlchemy (works with Python 3.13)"""
+    def connect(self, server: str, database: str,
+                username: str = None, password: str = None,
+                use_windows_auth: bool = True,
+                driver: str = "ODBC Driver 17 for SQL Server") -> Tuple[bool, str]:
+        """Connect to SQL Server database using SQLAlchemy"""
         if not SQLALCHEMY_AVAILABLE:
-            return False, "SQLAlchemy not installed"
+            return False, "SQLAlchemy not available"
         
         try:
-            logger.info(f"Attempting SQLAlchemy connection to {server}.{database}")
+            logger.info(f"Attempting connection to {server}.{database}")
             
-            # Build connection string
-            if use_windows_auth:
-                connection_string = f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
-            else:
-                connection_string = f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+            # Build connection string for SQLAlchemy with pymssql
+            # pymssql doesn't support Windows Authentication directly from cloud
+            # We'll use SQL Server Authentication
             
-            # Add SSL options for Render
-            connection_string += "Encrypt=yes;TrustServerCertificate=yes;"
+            if not username or not password:
+                return False, "SQL Server Authentication required for cloud deployment. Please provide username and password."
             
-            # Create connection URL
-            connection_url = URL.create(
-                "mssql+pyodbc",
-                query={"odbc_connect": connection_string}
-            )
+            # Using pymssql driver (compatible with Python 3.12/3.13)
+            connection_string = f"mssql+pymssql://{username}:{password}@{server}/{database}"
+            
+            logger.debug(f"Connection string: {connection_string}")
             
             # Create engine with optimized settings
             self.engine = create_engine(
-                connection_url,
+                connection_string,
                 pool_pre_ping=True,
                 echo=False,
                 connect_args={
@@ -155,60 +101,24 @@ class DatabaseManager:
             self.connected = True
             self.server = server
             self.database = database
-            self.connection_method = 'sqlalchemy'
             
-            logger.info(f"[OK] SQLAlchemy connection successful")
+            logger.info(f"[OK] Connection successful to {server}.{database}")
             return True, "Connection successful"
             
         except Exception as e:
-            error_msg = f"SQLAlchemy connection error: {str(e)}"
+            error_msg = f"Database connection error: {str(e)}"
             logger.error(error_msg)
+            self.connected = False
             return False, error_msg
-    
-    def connect(self, server: str, database: str,
-                username: str = None, password: str = None,
-                use_windows_auth: bool = True,
-                force_sqlalchemy: bool = False) -> Tuple[bool, str]:
-        """Connect to database with automatic fallback"""
-        
-        # Try pyodbc first unless forced to use SQLAlchemy
-        if not force_sqlalchemy and PYODBC_AVAILABLE:
-            success, message = self.connect_pyodbc(
-                server=server,
-                database=database,
-                username=username,
-                password=password,
-                use_windows_auth=use_windows_auth
-            )
-            if success:
-                return True, message
-        
-        # Fallback to SQLAlchemy
-        if SQLALCHEMY_AVAILABLE:
-            success, message = self.connect_sqlalchemy(
-                server=server,
-                database=database,
-                username=username,
-                password=password,
-                use_windows_auth=use_windows_auth
-            )
-            if success:
-                return True, message
-        
-        return False, "No database connector available. Install pyodbc or SQLAlchemy."
     
     def disconnect(self):
         """Disconnect from database"""
         try:
             if self.connection:
-                if self.connection_method == 'sqlalchemy':
-                    self.connection.close()
-                    if self.engine:
-                        self.engine.dispose()
-                else:
-                    self.connection.close()
-                
-                logger.info(f"[DISCONNECT] Disconnected from {self.server}.{self.database}")
+                self.connection.close()
+            if self.engine:
+                self.engine.dispose()
+            logger.info(f"[DISCONNECT] Disconnected from {self.server}.{self.database}")
         except Exception as e:
             logger.error(f"Error disconnecting: {e}")
         finally:
@@ -217,28 +127,18 @@ class DatabaseManager:
             self.connected = False
             self.server = None
             self.database = None
-            self.connection_method = None
     
     def execute_query(self, query: str, params: Dict = None):
-        """Execute a query using the current connection method"""
+        """Execute a query"""
         if not self.connected:
             raise Exception("Not connected to database")
         
         try:
-            if self.connection_method == 'sqlalchemy':
-                if params:
-                    result = self.connection.execute(text(query), params)
-                else:
-                    result = self.connection.execute(text(query))
-                return result
+            if params:
+                result = self.connection.execute(text(query), params)
             else:
-                # pyodbc
-                cursor = self.connection.cursor()
-                if params:
-                    cursor.execute(query, list(params.values()))
-                else:
-                    cursor.execute(query)
-                return cursor
+                result = self.connection.execute(text(query))
+            return result
         except Exception as e:
             logger.error(f"Query execution error: {e}")
             raise
@@ -246,15 +146,8 @@ class DatabaseManager:
     def fetch_all(self, query: str, params: Dict = None) -> List:
         """Fetch all results from a query"""
         try:
-            if self.connection_method == 'sqlalchemy':
-                result = self.execute_query(query, params)
-                return result.fetchall()
-            else:
-                # pyodbc
-                cursor = self.execute_query(query, params)
-                rows = cursor.fetchall()
-                cursor.close()
-                return rows
+            result = self.execute_query(query, params)
+            return result.fetchall()
         except Exception as e:
             logger.error(f"Fetch error: {e}")
             return []
@@ -408,29 +301,44 @@ class DatabaseManager:
             logger.debug(f"Executing query: {query}")
             logger.debug(f"Parameters: {params}")
             
-            # Execute query
-            rows = self.fetch_all(query, params)
-            
-            # Convert to list of lists - PURE VALUES ONLY
-            data = []
-            for row in rows:
-                row_list = []
-                for value in row:
-                    if value is None:
-                        row_list.append("")
-                    elif isinstance(value, datetime):
-                        row_list.append(value.strftime('%Y-%m-%d %H:%M:%S'))
-                    elif isinstance(value, timedelta):
-                        # Convert timedelta to string
-                        total_seconds = int(value.total_seconds())
-                        hours, remainder = divmod(total_seconds, 3600)
-                        minutes, seconds = divmod(remainder, 60)
-                        row_list.append(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
-                    else:
-                        row_list.append(str(value))
-                data.append(row_list)
-            
-            row_count = len(data)
+            # Execute query using pandas (simpler)
+            try:
+                df = pd.read_sql_query(text(query), self.engine, params=params)
+                data = df.values.tolist()
+                
+                # Convert values to strings
+                for i in range(len(data)):
+                    for j in range(len(data[i])):
+                        if pd.isna(data[i][j]):
+                            data[i][j] = ""
+                        elif isinstance(data[i][j], datetime):
+                            data[i][j] = data[i][j].strftime('%Y-%m-%d %H:%M:%S')
+                        else:
+                            data[i][j] = str(data[i][j])
+                
+                row_count = len(data)
+                
+            except:
+                # Fallback to manual fetch
+                rows = self.fetch_all(query, params)
+                data = []
+                for row in rows:
+                    row_list = []
+                    for value in row:
+                        if value is None:
+                            row_list.append("")
+                        elif isinstance(value, datetime):
+                            row_list.append(value.strftime('%Y-%m-%d %H:%M:%S'))
+                        elif isinstance(value, timedelta):
+                            total_seconds = int(value.total_seconds())
+                            hours, remainder = divmod(total_seconds, 3600)
+                            minutes, seconds = divmod(remainder, 60)
+                            row_list.append(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+                        else:
+                            row_list.append(str(value))
+                    data.append(row_list)
+                
+                row_count = len(data)
             
             # Log sample data
             if data:
@@ -760,7 +668,7 @@ def main():
     st.title("📊 Excel Table Exporter with Database Connection")
     st.markdown("""
     Export SQL Server tables to Excel templates with position mapping.
-    This application supports both pyodbc and SQLAlchemy connections.
+    This application uses SQLAlchemy for database connections.
     """)
     
     # Initialize session state
@@ -810,7 +718,7 @@ def main():
         # Connection status
         if st.session_state.db.connected:
             st.success("✅ Connected")
-            st.info(f"Method: {st.session_state.db.connection_method}")
+            st.info(f"Database: {st.session_state.db.database}")
             if st.button("🔌 Disconnect", use_container_width=True):
                 st.session_state.db.disconnect()
                 st.session_state.tables_list = []
@@ -819,13 +727,6 @@ def main():
                 st.rerun()
         else:
             st.warning("⚠️ Not Connected")
-        
-        # Database drivers info
-        with st.expander("Database Drivers"):
-            st.write(f"pyodbc: {'✅ Available' if PYODBC_AVAILABLE else '❌ Not available'}")
-            st.write(f"SQLAlchemy: {'✅ Available' if SQLALCHEMY_AVAILABLE else '❌ Not available'}")
-            if not PYODBC_AVAILABLE and not SQLALCHEMY_AVAILABLE:
-                st.error("No database connector available!")
         
         # Selected tables count
         if st.session_state.selected_tables:
@@ -849,48 +750,41 @@ def show_connection_tab():
     """Show connection tab"""
     st.header("Step 1: Database Connection")
     
+    # Info box about connection requirements
+    st.info("""
+    **Note:** For cloud deployment (Render.com), you must use SQL Server Authentication.
+    Windows Authentication is not supported from cloud environments.
+    """)
+    
     col1, col2 = st.columns(2)
     with col1:
         server = st.text_input("Server", value="MAHESHWAGH\\WINCC", help="SQL Server instance name")
         database = st.text_input("Database", value="VPI1", help="Database name")
     
     with col2:
-        auth_type = st.radio("Authentication", ["Windows Authentication", "SQL Server Authentication"])
-        
-        if auth_type == "SQL Server Authentication":
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-        else:
-            username = None
-            password = None
+        username = st.text_input("Username", value="sa", help="SQL Server username")
+        password = st.text_input("Password", type="password", help="SQL Server password")
     
-    # Connection method selection
-    st.subheader("Connection Method")
-    connection_method = st.selectbox(
-        "Select connection method:",
-        ["Auto (Try pyodbc first)", "Force SQLAlchemy"],
-        help="SQLAlchemy is recommended for Python 3.13"
-    )
-    
-    force_sqlalchemy = connection_method == "Force SQLAlchemy"
-    
-    if not PYODBC_AVAILABLE and not force_sqlalchemy:
-        st.warning("pyodbc not available. Using SQLAlchemy.")
-        force_sqlalchemy = True
+    # SSL options
+    st.subheader("Connection Options")
+    use_ssl = st.checkbox("Use SSL encryption", value=True)
+    trust_cert = st.checkbox("Trust server certificate", value=True)
     
     # Connection buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("🔗 Connect & Next", type="primary", use_container_width=True):
+            if not username or not password:
+                st.error("❌ Please provide username and password for SQL Server Authentication")
+                return
+                
             with st.spinner("Connecting to database..."):
-                use_windows_auth = auth_type == "Windows Authentication"
                 success, message = st.session_state.db.connect(
                     server=server,
                     database=database,
                     username=username,
                     password=password,
-                    use_windows_auth=use_windows_auth,
-                    force_sqlalchemy=force_sqlalchemy
+                    use_windows_auth=False  # Always use SQL Auth for cloud
                 )
                 
                 if success:
@@ -905,15 +799,17 @@ def show_connection_tab():
     
     with col2:
         if st.button("🔗 Connect", use_container_width=True):
+            if not username or not password:
+                st.error("❌ Please provide username and password")
+                return
+                
             with st.spinner("Connecting to database..."):
-                use_windows_auth = auth_type == "Windows Authentication"
                 success, message = st.session_state.db.connect(
                     server=server,
                     database=database,
                     username=username,
                     password=password,
-                    use_windows_auth=use_windows_auth,
-                    force_sqlalchemy=force_sqlalchemy
+                    use_windows_auth=False
                 )
                 
                 if success:
@@ -926,15 +822,17 @@ def show_connection_tab():
     
     with col3:
         if st.button("🔄 Test Connection", use_container_width=True):
+            if not username or not password:
+                st.error("❌ Please provide username and password")
+                return
+                
             with st.spinner("Testing connection..."):
-                use_windows_auth = auth_type == "Windows Authentication"
                 success, message = st.session_state.db.connect(
                     server=server,
                     database=database,
                     username=username,
                     password=password,
-                    use_windows_auth=use_windows_auth,
-                    force_sqlalchemy=force_sqlalchemy
+                    use_windows_auth=False
                 )
                 
                 if success:
@@ -948,6 +846,9 @@ def show_connection_tab():
         st.info(f"✅ Connected to {st.session_state.db.server}.{st.session_state.db.database}")
     else:
         st.warning("⚠️ Not connected to database")
+
+# Keep all other functions the same (show_table_selection_tab, show_template_upload_tab, etc.)
+# They don't need changes
 
 def show_table_selection_tab():
     """Show table selection tab"""
