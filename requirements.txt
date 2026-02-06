@@ -1,4 +1,6 @@
-streamlit==1.28.0
-pyodbc==5.0.1
-pandas==1.5.3
+streamlit==1.35.0
+pandas==2.2.2
 openpyxl==3.1.2
+sqlalchemy==2.0.28
+pyodbc==5.1.0  # Optional, works better with Python 3.12
+pymssql==2.2.8  # Alternative for Python 3.13
