@@ -6,7 +6,7 @@ This script demonstrates the automatic template analysis and mapping functionali
 that reduces manual user work in SCADA report generation.
 """
 
-from app import ExcelTemplateAnalyzer
+from streamlit_app import ExcelTemplateAnalyzer
 import json
 
 def main():

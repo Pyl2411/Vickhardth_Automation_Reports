@@ -1,22 +1,10 @@
-# ONLY DO THE SMALL CHNGES LIKE DONOT SPPOIL THE TEMPLATE STRUCTURE KEPT TEMPLETE AS IT IS ONLY DATA VALUES ARE FETCHED WITHOUT COLOUMN NAME FROM DB
-try:
-    import tkinter as tk
-    from tkinter import ttk, messagebox, scrolledtext, filedialog
-    HAS_TK = True
-except Exception:
-    HAS_TK = False
-
-if not HAS_TK:
-    raise RuntimeError(
-        "Tkinter not available in this Python environment. "
-        "Run the app locally with a Python build that includes Tcl/Tk, "
-        "or convert the UI for cloud deployment (Streamlit/Flask).")
+# app.py - Streamlit Version for Render.com Deployment
+import streamlit as st
 import pyodbc
-import json
+import pandas as pd
 import os
 import logging
 from datetime import datetime, timedelta
-import threading
 import sys
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
@@ -24,10 +12,13 @@ from openpyxl.utils import get_column_letter, column_index_from_string
 import traceback
 import shutil
 from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, field
 import re
+import tempfile
+import base64
+from io import BytesIO
+import json
 
-# Setup logging with ASCII-safe messages
+# Setup logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -39,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# DATABASE MANAGER
+# DATABASE MANAGER WITH SSL FIX
 # ============================================================================
 
 class DatabaseManager:
@@ -53,20 +44,33 @@ class DatabaseManager:
     
     def connect(self, server: str, database: str, 
                 username: str = None, password: str = None,
-                use_windows_auth: bool = True) -> Tuple[bool, str]:
+                use_windows_auth: bool = True,
+                encrypt: bool = True,
+                trust_server_cert: bool = True) -> Tuple[bool, str]:
         """Connect to SQL Server database"""
         try:
             logger.info(f"Attempting to connect to {server}.{database}")
-            # Build connection string
+            
+            # Build connection string with SSL fix
             if use_windows_auth:
-                conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
+                conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;"
             else:
-                conn_str = f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+                conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};UID={username};PWD={password};"
+            
+            # Add SSL/encryption options
+            if encrypt:
+                conn_str += "Encrypt=yes;"
+            else:
+                conn_str += "Encrypt=no;"
+            
+            # THIS IS THE FIX FOR SSL CERTIFICATE ERROR
+            if trust_server_cert:
+                conn_str += "TrustServerCertificate=yes;"
             
             logger.debug(f"Connection string: {conn_str}")
             
             # Attempt connection
-            self.connection = pyodbc.connect(conn_str)
+            self.connection = pyodbc.connect(conn_str, timeout=30)
             self.connected = True
             self.server = server
             self.database = database
@@ -209,14 +213,11 @@ class DatabaseManager:
             # Get display name
             display_name = self.get_display_name(table_name)
             
-            # Don't get columns from DB - template will provide column positions
-            # We'll fetch data with SELECT * to get all columns
-            
             # Build WHERE clause for filters
             where_clauses = []
             params = []
             
-            # We need to get columns temporarily to find filter columns
+            # We need to get columns temporarily to build WHERE clause
             temp_columns = self.get_table_columns(table_name)
             
             # Add batch filter if specified
@@ -275,11 +276,11 @@ class DatabaseManager:
             cursor = self.connection.cursor()
             cursor.execute(query, params)
             
-            # Fetch all rows - JUST RAW DATA, NO COLUMN NAMES
+            # Fetch all rows - JUST RAW DATA VALUES, NO COLUMN NAMES
             rows = cursor.fetchall()
             row_count = len(rows)
             
-            # Convert to list of lists - PURE VALUES ONLY
+            # Convert to list of lists - PURE VALUES ONLY, NO COLUMN NAMES
             data = []
             for row in rows:
                 row_list = []
@@ -290,16 +291,17 @@ class DatabaseManager:
                     # Handle datetime objects
                     elif isinstance(value, datetime):
                         value = value.strftime('%Y-%m-%d %H:%M:%S')
-                    row_list.append(str(value))  # Convert everything to string
+                    # Convert everything to string (but keep empty strings as "")
+                    row_list.append(str(value) if value is not None else "")
                 data.append(row_list)
             
             cursor.close()
             
-            # Log sample data
+            # Log sample data (just values)
             if data:
-                logger.debug(f"Sample filtered row from {table_name}: {data[0]}")
+                logger.debug(f"Sample filtered row from {table_name}: First 3 values - {data[0][:3]}")
             
-            logger.info(f"[OK] Fetched {row_count} filtered rows from {table_name}")
+            logger.info(f"[OK] Fetched {row_count} filtered rows from {table_name} (VALUES ONLY)")
             
             return {
                 'success': True,
@@ -348,661 +350,6 @@ class DatabaseManager:
         return display_name if display_name else table_name
 
 # ============================================================================
-# DATA CLASSES
-# ============================================================================
-
-@dataclass
-class CellMapping:
-    """Mapping information for a single cell"""
-    table_name: str
-    column_name: str
-    template_sheet: str
-    template_cell: str  # e.g., "A1", "B3", "C5"
-    apply_to_all_sheets: bool = False
-    selected_sheets: List[str] = field(default_factory=list)
-    
-@dataclass
-class TableConfig:
-    """Configuration for a data table"""
-    table_name: str
-    display_name: str
-    start_row: int
-    start_col: str
-    sheet_name: str
-    column_mappings: Dict[str, CellMapping] = field(default_factory=dict)
-    apply_to_all_sheets: bool = False
-    selected_sheets: List[str] = field(default_factory=list)
-
-# ============================================================================
-# SIMPLE POSITION DIALOG FOR BACKGROUND/BATCH DATA (FIXED)
-# ============================================================================
-
-class SimplePositionDialog:
-    """Dialog for tables that only need start position (no column mappings)"""
-    
-    def __init__(self, parent, table_name: str, template_sheets: List[str]):
-        self.parent = parent
-        self.table_name = table_name
-        self.template_sheets = template_sheets
-        self.start_row = 0
-        self.start_col = ""
-        self.sheet_name = ""
-        self.apply_to_all = False
-        self.selected_sheets = []
-        self.result = None
-        
-        self.create_dialog()
-    
-    def create_dialog(self):
-        """Create the simple position dialog"""
-        # Get parent window - handle both tkinter widget and app object
-        if hasattr(self.parent, 'root'):
-            parent_window = self.parent.root
-        else:
-            parent_window = self.parent
-            
-        self.dialog = tk.Toplevel(parent_window)
-        self.dialog.title(f"Set Start Position for {self.table_name}")
-        self.dialog.geometry("500x500")
-        self.dialog.transient(parent_window)
-        self.dialog.grab_set()
-        
-        # Center dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-        
-        # Main container
-        main_frame = ttk.Frame(self.dialog, padding="20")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text=f"Set Start Position", 
-                 font=('Arial', 14, 'bold')).pack(pady=(0, 10))
-        ttk.Label(main_frame, text=f"Table: {self.table_name}", 
-                 font=('Arial', 11)).pack(pady=(0, 20))
-        
-        # Instructions
-        instr_frame = ttk.LabelFrame(main_frame, text="Instructions", padding="10")
-        instr_frame.pack(fill='x', pady=(0, 20))
-        
-        instructions = [
-            "1. Select sheet to insert data",
-            "2. Enter starting cell (e.g., B4, C10)",
-            "3. Data will be inserted as a table starting from this cell",
-            "4. First row will contain column headers",
-            "5. All rows from database will be inserted",
-            "6. Choose whether to apply to all sheets or specific sheets"
-        ]
-        
-        for instr in instructions:
-            ttk.Label(instr_frame, text=instr, font=('Arial', 9)).pack(anchor='w', pady=1)
-        
-        # Sheet selection
-        sheet_frame = ttk.Frame(main_frame)
-        sheet_frame.pack(fill='x', pady=10)
-        ttk.Label(sheet_frame, text="Sheet:", width=10).pack(side=tk.LEFT)
-        
-        self.sheet_var = tk.StringVar(value=self.template_sheets[0] if self.template_sheets else "")
-        sheet_cb = ttk.Combobox(sheet_frame, textvariable=self.sheet_var, 
-                               values=self.template_sheets, width=30, state="readonly")
-        sheet_cb.pack(side=tk.LEFT, padx=5)
-        
-        # Apply to all sheets option
-        self.apply_all_var = tk.BooleanVar(value=False)
-        apply_cb = ttk.Checkbutton(sheet_frame, text="Apply to all sheets", 
-                                  variable=self.apply_all_var,
-                                  command=self.toggle_sheet_selection)
-        apply_cb.pack(side=tk.LEFT, padx=10)
-        
-        # Start cell
-        cell_frame = ttk.Frame(main_frame)
-        cell_frame.pack(fill='x', pady=10)
-        ttk.Label(cell_frame, text="Start Cell:", width=10).pack(side=tk.LEFT)
-        
-        self.cell_var = tk.StringVar(value="A1")
-        cell_entry = ttk.Entry(cell_frame, textvariable=self.cell_var, width=15)
-        cell_entry.pack(side=tk.LEFT, padx=5)
-        ttk.Label(cell_frame, text="e.g., B4, C10, D20").pack(side=tk.LEFT)
-        
-        # Selected sheets frame (initially shown)
-        self.sheets_frame = ttk.LabelFrame(main_frame, text="Select Specific Sheets", padding="10")
-        self.sheets_frame.pack(fill='x', pady=10)
-        
-        # Create canvas for sheet selection
-        self.sheet_canvas = tk.Canvas(self.sheets_frame, height=120, highlightthickness=0)
-        sheet_scrollbar = ttk.Scrollbar(self.sheets_frame, orient="vertical", command=self.sheet_canvas.yview)
-        self.sheet_checkbox_frame = ttk.Frame(self.sheet_canvas)
-        
-        self.sheet_canvas.pack(side=tk.LEFT, fill='both', expand=True)
-        sheet_scrollbar.pack(side=tk.RIGHT, fill='y')
-        
-        self.sheet_canvas.configure(yscrollcommand=sheet_scrollbar.set)
-        self.sheet_canvas.create_window((0, 0), window=self.sheet_checkbox_frame, anchor="nw")
-        
-        # Sheet checkboxes
-        self.sheet_vars = {}
-        for sheet in self.template_sheets:
-            var = tk.BooleanVar(value=True)
-            self.sheet_vars[sheet] = var
-            
-            cb_frame = ttk.Frame(self.sheet_checkbox_frame)
-            cb_frame.pack(fill='x', padx=5, pady=1)
-            
-            cb = ttk.Checkbutton(cb_frame, text=sheet, variable=var)
-            cb.pack(anchor='w')
-        
-        # Configure scrolling
-        def on_frame_configure(event):
-            self.sheet_canvas.configure(scrollregion=self.sheet_canvas.bbox("all"))
-        
-        self.sheet_checkbox_frame.bind("<Configure>", on_frame_configure)
-        
-        # Control buttons for sheets
-        sheet_btn_frame = ttk.Frame(self.sheets_frame)
-        sheet_btn_frame.pack(fill='x', pady=5)
-        ttk.Button(sheet_btn_frame, text="Select All", 
-                  command=self.select_all_sheets).pack(side=tk.LEFT, padx=5)
-        ttk.Button(sheet_btn_frame, text="Clear All", 
-                  command=self.clear_all_sheets).pack(side=tk.LEFT, padx=5)
-        
-        # Buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill='x', pady=20)
-        
-        ttk.Button(btn_frame, text="Apply", command=self.apply, 
-                  style='Accent.TButton').pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=self.cancel).pack(side=tk.RIGHT, padx=5)
-        
-        # Clean up on close
-        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
-    
-    def toggle_sheet_selection(self):
-        """Show/hide sheet selection frame"""
-        if self.apply_all_var.get():
-            self.sheets_frame.pack_forget()
-        else:
-            self.sheets_frame.pack(fill='x', pady=10)
-    
-    def select_all_sheets(self):
-        """Select all sheets"""
-        for var in self.sheet_vars.values():
-            var.set(True)
-    
-    def clear_all_sheets(self):
-        """Clear all sheet selections"""
-        for var in self.sheet_vars.values():
-            var.set(False)
-    
-    def apply(self):
-        """Apply the position settings"""
-        sheet = self.sheet_var.get()
-        cell = self.cell_var.get().strip().upper()
-        apply_all = self.apply_all_var.get()
-        
-        # Validate cell format
-        if not re.match(r'^[A-Z]+\d+$', cell):
-            messagebox.showerror("Invalid Cell", 
-                               f"Invalid cell reference: {cell}\n\n"
-                               "Use format like: B4, C10, D20, etc.")
-            return
-        
-        # Get selected sheets if not applying to all
-        selected_sheets = []
-        if not apply_all:
-            selected_sheets = [s for s, var in self.sheet_vars.items() if var.get()]
-            if not selected_sheets:
-                messagebox.showwarning("No Sheets", "Please select at least one sheet.")
-                return
-        
-        # Parse cell to get row and column
-        col_letter = ''.join([c for c in cell if c.isalpha()])
-        row_num = int(''.join([c for c in cell if c.isdigit()]))
-        
-        self.start_row = row_num
-        self.start_col = col_letter
-        self.sheet_name = sheet
-        self.apply_to_all = apply_all
-        self.selected_sheets = selected_sheets if selected_sheets else [sheet]
-        
-        self.result = {
-            'start_row': self.start_row,
-            'start_col': self.start_col,
-            'sheet_name': self.sheet_name,
-            'apply_to_all': self.apply_to_all,
-            'selected_sheets': self.selected_sheets
-        }
-        
-        self.dialog.destroy()
-    
-    def cancel(self):
-        """Cancel the dialog"""
-        self.result = None
-        self.dialog.destroy()
-    
-    def get_result(self) -> Optional[Dict]:
-        """Get the dialog result"""
-        return self.result
-
-# ============================================================================
-# SHEET SELECTION DIALOG (FIXED)
-# ============================================================================
-
-class SheetSelectionDialog:
-    """Dialog for selecting specific sheets"""
-    
-    def __init__(self, parent, available_sheets: List[str], title: str = "Select Sheets"):
-        self.parent = parent
-        self.available_sheets = available_sheets
-        self.title = title
-        self.selected_sheets = []
-        self.result = None
-        
-        self.create_dialog()
-    
-    def create_dialog(self):
-        """Create the sheet selection dialog"""
-        # Get parent window - handle both tkinter widget and app object
-        if hasattr(self.parent, 'root'):
-            parent_window = self.parent.root
-        else:
-            parent_window = self.parent
-            
-        self.dialog = tk.Toplevel(parent_window)
-        self.dialog.title(self.title)
-        self.dialog.geometry("400x500")
-        self.dialog.transient(parent_window)
-        self.dialog.grab_set()
-        
-        # Center dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-        
-        # Main container
-        main_frame = ttk.Frame(self.dialog, padding="20")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text="Select Sheets", 
-                 font=('Arial', 14, 'bold')).pack(pady=(0, 10))
-        ttk.Label(main_frame, text=f"Available sheets: {len(self.available_sheets)}", 
-                 font=('Arial', 10)).pack(pady=(0, 20))
-        
-        # Instructions
-        instr_frame = ttk.LabelFrame(main_frame, text="Instructions", padding="10")
-        instr_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(instr_frame, text="Select which sheets to apply the data to:", 
-                 font=('Arial', 9)).pack(anchor='w', pady=2)
-        ttk.Label(instr_frame, text="• Check sheets where data should appear", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
-        ttk.Label(instr_frame, text="• Leave unchecked to skip", 
-                 font=('Arial', 9)).pack(anchor='w', pady=1)
-        
-        # Create scrollable frame for sheet checkboxes
-        canvas = tk.Canvas(main_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        sheet_frame = ttk.Frame(canvas)
-        
-        canvas.pack(side=tk.LEFT, fill='both', expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill='y')
-        
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.create_window((0, 0), window=sheet_frame, anchor="nw")
-        
-        # Store variables
-        self.sheet_vars = {}
-        
-        # Create checkboxes for each sheet
-        for sheet in self.available_sheets:
-            var = tk.BooleanVar(value=True)  # Default selected
-            self.sheet_vars[sheet] = var
-            
-            cb_frame = ttk.Frame(sheet_frame)
-            cb_frame.pack(fill='x', padx=5, pady=2)
-            
-            cb = ttk.Checkbutton(cb_frame, text=sheet, variable=var)
-            cb.pack(anchor='w')
-        
-        # Configure scrolling
-        def on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        sheet_frame.bind("<Configure>", on_frame_configure)
-        
-        # Control buttons
-        control_frame = ttk.Frame(sheet_frame)
-        control_frame.pack(fill='x', pady=10)
-        
-        ttk.Button(control_frame, text="Select All", 
-                  command=self.select_all).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Clear All", 
-                  command=self.clear_all).pack(side=tk.LEFT, padx=5)
-        
-        # Buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill='x', pady=20)
-        
-        ttk.Button(btn_frame, text="Apply", command=self.apply, 
-                  style='Accent.TButton').pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=self.cancel).pack(side=tk.RIGHT, padx=5)
-        
-        # Clean up on close
-        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
-    
-    def select_all(self):
-        """Select all sheets"""
-        for var in self.sheet_vars.values():
-            var.set(True)
-    
-    def clear_all(self):
-        """Clear all sheet selections"""
-        for var in self.sheet_vars.values():
-            var.set(False)
-    
-    def apply(self):
-        """Apply sheet selection"""
-        self.selected_sheets = [sheet for sheet, var in self.sheet_vars.items() if var.get()]
-        
-        if not self.selected_sheets:
-            messagebox.showwarning("No Selection", "Please select at least one sheet.")
-            return
-        
-        self.result = self.selected_sheets
-        self.dialog.destroy()
-    
-    def cancel(self):
-        """Cancel sheet selection"""
-        self.result = None
-        self.dialog.destroy()
-    
-    def get_selected_sheets(self) -> Optional[List[str]]:
-        """Get the selection result"""
-        return self.result
-
-# ============================================================================
-# POSITION MAPPING DIALOG (FIXED)
-# ============================================================================
-
-class PositionMappingDialog:
-    """Dialog for mapping database columns to template cells"""
-    
-    def __init__(self, parent, table_name: str, db_columns: List[str], 
-                 template_sheets: List[str]):
-        self.parent = parent
-        self.table_name = table_name
-        self.db_columns = db_columns
-        self.template_sheets = template_sheets
-        self.mappings = {}  # column_name -> (sheet_name, cell_reference, apply_to_all, selected_sheets)
-        self.result = None
-        
-        self.create_dialog()
-    
-    def create_dialog(self):
-        """Create the position mapping dialog"""
-        # Get parent window - handle both tkinter widget and app object
-        if hasattr(self.parent, 'root'):
-            parent_window = self.parent.root
-        else:
-            parent_window = self.parent
-            
-        self.dialog = tk.Toplevel(parent_window)
-        self.dialog.title(f"Map Positions for {self.table_name}")
-        self.dialog.geometry("1000x600")
-        self.dialog.transient(parent_window)
-        self.dialog.grab_set()
-        
-        # Center dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-        
-        # Main container
-        main_frame = ttk.Frame(self.dialog, padding="10")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text=f"Map Database Columns to Template Cells", 
-                 font=('Arial', 14, 'bold')).pack(pady=(0, 10))
-        ttk.Label(main_frame, text=f"Table: {self.table_name}", 
-                 font=('Arial', 11)).pack(pady=(0, 20))
-        
-        # Instructions
-        instr_frame = ttk.LabelFrame(main_frame, text="Instructions", padding="10")
-        instr_frame.pack(fill='x', pady=(0, 20))
-        
-        instructions = [
-            "1. For each database column, select:",
-            "   • Sheet: Choose base sheet or 'All Sheets'",
-            "   • Cell: Enter cell reference (e.g., B4, C4, D4)",
-            "   • Apply to: Choose 'All Sheets', 'This Sheet Only', or 'Select Sheets'",
-            "2. Leave cell empty to skip that column",
-            "3. Example: BATCH_NAME → Sheet1 → B4 → All Sheets",
-            "4. Example: JOB_NO → Sheet1 → C4 → Select Sheets (Sheet1, Sheet3)",
-            "5. For merged cells: Write to top-left cell (e.g., B4 for B4:D4 merged)"
-        ]
-        
-        for instr in instructions:
-            ttk.Label(instr_frame, text=instr, font=('Arial', 9)).pack(anchor='w', pady=1)
-        
-        # Create scrollable frame for mappings
-        canvas = tk.Canvas(main_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        mapping_frame = ttk.Frame(canvas)
-        
-        canvas.pack(side=tk.LEFT, fill='both', expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill='y')
-        
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.create_window((0, 0), window=mapping_frame, anchor="nw")
-        
-        # Store variables
-        self.sheet_vars = {}
-        self.cell_vars = {}
-        self.preview_vars = {}
-        self.apply_type_vars = {}  # "all", "this", "select"
-        self.selected_sheets_vars = {}  # For "select" option
-        
-        # Create mapping rows
-        header_frame = ttk.Frame(mapping_frame)
-        header_frame.pack(fill='x', pady=(0, 10))
-        
-        columns = [
-            ("Database Column", 20),
-            ("Sheet", 15),
-            ("Cell", 10),
-            ("Apply to", 15),
-            ("Sheets Selected", 20),
-            ("Preview", 25)
-        ]
-        
-        for i, (text, width) in enumerate(columns):
-            ttk.Label(header_frame, text=text, width=width, 
-                     font=('Arial', 10, 'bold')).grid(row=0, column=i, padx=5)
-        
-        # Create rows for each database column
-        for i, column in enumerate(self.db_columns, 1):
-            row_frame = ttk.Frame(mapping_frame)
-            row_frame.pack(fill='x', pady=2)
-            
-            # Database column name
-            ttk.Label(row_frame, text=column, width=20).grid(row=0, column=0, padx=5)
-            
-            # Sheet dropdown
-            sheet_var = tk.StringVar(value=self.template_sheets[0] if self.template_sheets else "")
-            sheet_cb = ttk.Combobox(row_frame, textvariable=sheet_var, 
-                                   values=self.template_sheets, width=15, state="readonly")
-            sheet_cb.grid(row=0, column=1, padx=5)
-            self.sheet_vars[column] = sheet_var
-            
-            # Cell reference entry
-            cell_var = tk.StringVar()
-            cell_entry = ttk.Entry(row_frame, textvariable=cell_var, width=10)
-            cell_entry.grid(row=0, column=2, padx=5)
-            self.cell_vars[column] = cell_var
-            
-            # Apply type dropdown
-            apply_var = tk.StringVar(value="this")  # "all", "this", "select"
-            apply_cb = ttk.Combobox(row_frame, textvariable=apply_var, 
-                                   values=["All Sheets", "This Sheet Only", "Select Sheets"], 
-                                   width=15, state="readonly")
-            apply_cb.grid(row=0, column=3, padx=5)
-            self.apply_type_vars[column] = apply_var
-            
-            # Select sheets button (initially disabled)
-            select_btn = ttk.Button(row_frame, text="Select Sheets...", 
-                                   command=lambda col=column: self.select_sheets(col),
-                                   width=15, state='disabled')
-            select_btn.grid(row=0, column=4, padx=5)
-            self.selected_sheets_vars[column] = {
-                'button': select_btn,
-                'selected': [self.template_sheets[0]] if self.template_sheets else []
-            }
-            
-            # Preview label
-            preview_var = tk.StringVar(value="Not mapped")
-            ttk.Label(row_frame, textvariable=preview_var, width=25).grid(row=0, column=5, padx=5)
-            self.preview_vars[column] = preview_var
-            
-            # Add validation and event handlers
-            def on_change(col_name, *args):
-                self.update_preview(col_name)
-                # Enable/disable select sheets button
-                apply_type = self.apply_type_vars[col_name].get()
-                if apply_type == "Select Sheets":
-                    self.selected_sheets_vars[col_name]['button'].config(state='normal')
-                else:
-                    self.selected_sheets_vars[col_name]['button'].config(state='disabled')
-            
-            # Use trace_add
-            cell_var.trace_add('write', lambda name, index, mode, col=column: on_change(col))
-            sheet_var.trace_add('write', lambda name, index, mode, col=column: on_change(col))
-            apply_var.trace_add('write', lambda name, index, mode, col=column: on_change(col))
-        
-        # Configure scrolling
-        def on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        mapping_frame.bind("<Configure>", on_frame_configure)
-        
-        # Safe mouse wheel binding
-        def on_mousewheel(event):
-            try:
-                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-            except tk.TclError:
-                pass
-        
-        canvas.bind("<MouseWheel>", on_mousewheel)
-        
-        # Buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill='x', pady=20)
-        
-        ttk.Button(btn_frame, text="Apply Mappings", command=self.apply_mappings, 
-                  style='Accent.TButton').pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=self.cancel).pack(side=tk.RIGHT, padx=5)
-        
-        # Clean up on close
-        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
-    
-    def select_sheets(self, column_name: str):
-        """Open sheet selection dialog for a specific column"""
-        # Pass self.dialog as parent (it's a tkinter widget)
-        dialog = SheetSelectionDialog(self.dialog, self.template_sheets, 
-                                     f"Select Sheets for {column_name}")
-        self.dialog.wait_window(dialog.dialog)
-        
-        selected = dialog.get_selected_sheets()
-        if selected:
-            self.selected_sheets_vars[column_name]['selected'] = selected
-            self.update_preview(column_name)
-    
-    def update_preview(self, column_name: str):
-        """Update preview for a column"""
-        cell_val = self.cell_vars[column_name].get().strip().upper()
-        sheet_val = self.sheet_vars[column_name].get()
-        apply_type = self.apply_type_vars[column_name].get()
-        
-        if cell_val:
-            if re.match(r'^[A-Z]+\d+$', cell_val):
-                if apply_type == "All Sheets":
-                    self.preview_vars[column_name].set(f"Will write to {cell_val} on ALL sheets")
-                elif apply_type == "This Sheet Only":
-                    self.preview_vars[column_name].set(f"Will write to {cell_val} on {sheet_val}")
-                elif apply_type == "Select Sheets":
-                    selected = self.selected_sheets_vars[column_name]['selected']
-                    if selected:
-                        sheet_list = ", ".join(selected[:2])
-                        if len(selected) > 2:
-                            sheet_list += f" (+{len(selected)-2} more)"
-                        self.preview_vars[column_name].set(f"Will write to {cell_val} on: {sheet_list}")
-                    else:
-                        self.preview_vars[column_name].set(f"Will write to {cell_val} (select sheets)")
-            else:
-                self.preview_vars[column_name].set("Invalid cell format")
-        else:
-            self.preview_vars[column_name].set("Not mapped")
-    
-    def apply_mappings(self):
-        """Apply all mappings"""
-        self.mappings = {}
-        
-        for column in self.db_columns:
-            sheet = self.sheet_vars[column].get()
-            cell = self.cell_vars[column].get().strip().upper()
-            apply_type = self.apply_type_vars[column].get()
-            selected_sheets = self.selected_sheets_vars[column]['selected']
-            
-            if sheet and cell:
-                # Validate cell format
-                if re.match(r'^[A-Z]+\d+$', cell):
-                    # Determine apply settings
-                    apply_all = (apply_type == "All Sheets")
-                    
-                    # For "Select Sheets", use the selected sheets
-                    target_sheets = []
-                    if apply_type == "Select Sheets":
-                        if not selected_sheets:
-                            messagebox.showerror("No Sheets Selected", 
-                                               f"No sheets selected for {column}. Please select sheets.")
-                            return
-                        target_sheets = selected_sheets
-                    elif apply_type == "This Sheet Only":
-                        target_sheets = [sheet]
-                    else:  # All Sheets
-                        target_sheets = self.template_sheets
-                    
-                    self.mappings[column] = (sheet, cell, apply_all, target_sheets)
-                else:
-                    messagebox.showerror("Invalid Cell", 
-                                       f"Invalid cell reference for {column}: {cell}\n\n"
-                                       "Use format like: B4, C4, D10, etc.")
-                    return
-        
-        if not self.mappings:
-            if messagebox.askyesno("No Mappings", 
-                                  "No columns have been mapped. Continue anyway?"):
-                self.result = {}
-                self.dialog.destroy()
-            return
-        else:
-            self.result = self.mappings
-            self.dialog.destroy()
-    
-    def cancel(self):
-        """Cancel mapping"""
-        self.result = None
-        self.dialog.destroy()
-    
-    def get_mappings(self) -> Optional[Dict]:
-        """Get the mapping result"""
-        return self.result
-
-# ============================================================================
 # EXCEL EXPORTER WITH SHEET SELECTION SUPPORT
 # ============================================================================
 
@@ -1010,43 +357,14 @@ class ExcelTableExporter:
     """Handles exporting tables to Excel with position mapping and merged cell support"""
     
     @staticmethod
-    def export_tables_to_excel(tables_data: Dict, output_path: str) -> bool:
-        """Export multiple tables to new Excel file"""
-        try:
-            wb = Workbook()
-            
-            # Remove default sheet
-            if wb.sheetnames:
-                wb.remove(wb.active)
-            
-            # Create a sheet for each table
-            for table_name, table_data in tables_data.items():
-                if table_data.get('success', False):
-                    # Create sheet with valid name
-                    sheet_name = ExcelTableExporter.get_valid_sheet_name(table_data['display_name'])
-                    ws = wb.create_sheet(title=sheet_name)
-                    
-                    # Add table to sheet
-                    ExcelTableExporter.add_table_to_sheet(ws, table_data)
-            
-            # Save workbook
-            wb.save(output_path)
-            logger.info(f"[OK] Excel file created: {output_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"[ERROR] Excel export error: {e}")
-            logger.error(traceback.format_exc())
-            raise
-    
-    @staticmethod
     def export_tables_to_template(tables_data: Dict, template_path: str, 
-                                table_configs: Dict[str, TableConfig],
+                                table_configs: Dict[str, Dict],
                                 output_path: str,
                                 merge_rules: List[str] = None) -> bool:
         """
         Export data into an existing template using position mappings.
         Template structure is kept AS IS, only values are filled in.
+        IMPORTANT: Data fetched from DB contains VALUES ONLY, NO COLUMN NAMES
         """
         try:
             logger.info("="*60)
@@ -1101,77 +419,79 @@ class ExcelTableExporter:
                     continue
                 
                 table_config = table_configs[table_name]
-                logger.info(f"Table type: {'TABULAR' if table_config.start_row > 0 else 'HEADER'}")
-                logger.info(f"Data: {table_data.get('row_count', 0)} rows")
+                logger.info(f"Table type: {'TABULAR' if table_config.get('start_row', 0) > 0 else 'HEADER'}")
+                logger.info(f"Data: {table_data.get('row_count', 0)} rows (VALUES ONLY, NO COLUMN NAMES)")
                 
                 # Write individual column mappings (for header tables)
-                if table_config.column_mappings:
-                    logger.info(f"Processing {len(table_config.column_mappings)} column mappings")
+                if table_config.get('column_mappings'):
+                    column_mappings = table_config['column_mappings']
+                    logger.info(f"Processing {len(column_mappings)} column mappings")
                     
-                    for column_name, cell_mapping in table_config.column_mappings.items():
-                        logger.debug(f"Mapping column: {column_name} -> {cell_mapping.template_cell}")
+                    # IMPORTANT: For header tables, we need to get DB columns to know value positions
+                    # We'll fetch columns from DB just for header tables
+                    try:
+                        # Get actual DB columns to know which position each mapped column is in
+                        # But for simplicity, we'll assume the first row contains all values in order
                         
-                        # Get the value from first row (header tables usually have one row)
-                        value = ""
                         if table_data['data'] and len(table_data['data']) > 0:
-                            # For header tables, get column index from configuration
-                            # We assume data is in the same order as configured
-                            # Find which position this column is in
-                            column_index = -1
-                            # We need to get DB columns for this
-                            try:
-                                # This is a hack - we need to get actual DB columns
-                                # But we removed that from fetch_filtered_data
-                                # For now, we'll use the first data row
-                                first_row = table_data['data'][0]
-                                # Use position based on column mapping order
-                                # We'll get column index from the mapping dictionary
-                                all_columns = list(table_config.column_mappings.keys())
-                                if column_name in all_columns:
-                                    column_index = all_columns.index(column_name)
-                                    if column_index < len(first_row):
-                                        value = first_row[column_index]
-                                        if value is None:
-                                            value = ""
-                            except Exception as e:
-                                logger.warning(f"Error getting value for {column_name}: {e}")
-                                value = ""
-                        
-                        logger.debug(f"Value: {value}")
-                        
-                        # Determine which sheets to write to
-                        sheets_to_write = []
-                        if cell_mapping.apply_to_all_sheets or table_config.apply_to_all_sheets:
-                            # Write to all sheets
-                            sheets_to_write = wb.sheetnames
-                        elif cell_mapping.selected_sheets:
-                            # Write to selected sheets
-                            sheets_to_write = [s for s in cell_mapping.selected_sheets if s in wb.sheetnames]
-                        elif table_config.selected_sheets:
-                            # Write to table's selected sheets
-                            sheets_to_write = [s for s in table_config.selected_sheets if s in wb.sheetnames]
-                        else:
-                            # Write to specific sheet only
-                            if cell_mapping.template_sheet in wb.sheetnames:
-                                sheets_to_write = [cell_mapping.template_sheet]
-                        
-                        # Write to each sheet
-                        for sheet_name in sheets_to_write:
-                            success = ExcelTableExporter.write_to_cell_safe(
-                                wb, 
-                                sheet_name, 
-                                cell_mapping.template_cell, 
-                                value
-                            )
+                            first_row = table_data['data'][0]  # First data row (VALUES ONLY)
                             
-                            if success:
-                                logger.debug(f"[OK] Wrote '{value}' to {sheet_name}!{cell_mapping.template_cell}")
-                            else:
-                                logger.warning(f"[ERROR] Could not write to {sheet_name}!{cell_mapping.template_cell}")
+                            for column_name, cell_mapping in column_mappings.items():
+                                logger.debug(f"Mapping column: {column_name}")
+                                
+                                # Find which position this column is in the data
+                                # The column_mappings should be in the same order as DB columns
+                                # So we can use the index of column_name in column_mappings keys
+                                column_index = list(column_mappings.keys()).index(column_name)
+                                
+                                # Get value from first row
+                                value = ""
+                                if column_index < len(first_row):
+                                    value = first_row[column_index]
+                                
+                                logger.debug(f"Value for {column_name}: {value}")
+                                
+                                # Determine which sheets to write to
+                                sheets_to_write = []
+                                if cell_mapping.get('apply_to_all_sheets', False) or table_config.get('apply_to_all_sheets', False):
+                                    # Write to all sheets
+                                    sheets_to_write = wb.sheetnames
+                                elif cell_mapping.get('selected_sheets'):
+                                    # Write to selected sheets
+                                    sheets_to_write = [s for s in cell_mapping['selected_sheets'] if s in wb.sheetnames]
+                                elif table_config.get('selected_sheets'):
+                                    # Write to table's selected sheets
+                                    sheets_to_write = [s for s in table_config['selected_sheets'] if s in wb.sheetnames]
+                                else:
+                                    # Write to specific sheet only
+                                    if cell_mapping.get('template_sheet') in wb.sheetnames:
+                                        sheets_to_write = [cell_mapping['template_sheet']]
+                                
+                                # Write to each sheet
+                                for sheet_name in sheets_to_write:
+                                    success = ExcelTableExporter.write_to_cell_safe(
+                                        wb, 
+                                        sheet_name, 
+                                        cell_mapping['template_cell'], 
+                                        value
+                                    )
+                                    
+                                    if success:
+                                        logger.debug(f"[OK] Wrote '{value}' to {sheet_name}!{cell_mapping['template_cell']}")
+                                    else:
+                                        logger.warning(f"[ERROR] Could not write to {sheet_name}!{cell_mapping['template_cell']}")
+                        else:
+                            logger.warning(f"No data found for header table {table_name}")
+                            
+                    except Exception as e:
+                        logger.warning(f"Error processing column mappings for {table_name}: {e}")
                 
                 # Write tabular data if start position is configured (for BACKGROUND/BATCH data)
-                if table_config.start_row > 0 and table_config.start_col:
-                    logger.info(f"Writing tabular data starting at {table_config.start_col}{table_config.start_row}")
+                start_row = table_config.get('start_row', 0)
+                start_col = table_config.get('start_col', '')
+                
+                if start_row > 0 and start_col:
+                    logger.info(f"Writing tabular data starting at {start_col}{start_row}")
                     
                     if not table_data['data']:
                         logger.warning(f"[WARNING] No data found for table {table_name}")
@@ -1179,28 +499,29 @@ class ExcelTableExporter:
                     
                     # Determine which sheets to write to
                     sheets_to_write = []
-                    if table_config.apply_to_all_sheets:
+                    if table_config.get('apply_to_all_sheets', False):
                         sheets_to_write = wb.sheetnames
-                    elif table_config.selected_sheets:
-                        sheets_to_write = [s for s in table_config.selected_sheets if s in wb.sheetnames]
+                    elif table_config.get('selected_sheets'):
+                        sheets_to_write = [s for s in table_config['selected_sheets'] if s in wb.sheetnames]
                     else:
-                        if table_config.sheet_name in wb.sheetnames:
-                            sheets_to_write = [table_config.sheet_name]
+                        sheet_name = table_config.get('sheet_name', '')
+                        if sheet_name in wb.sheetnames:
+                            sheets_to_write = [sheet_name]
                     
                     for sheet_name in sheets_to_write:
                         ws = wb[sheet_name]
-                        start_col_idx = column_index_from_string(table_config.start_col)
+                        start_col_idx = column_index_from_string(start_col)
                         
                         # Find first safe row
-                        safe_row = ExcelTableExporter.find_safe_row_for_table(ws, table_config.start_row)
+                        safe_row = ExcelTableExporter.find_safe_row_for_table(ws, start_row)
                         logger.info(f"Writing to sheet '{sheet_name}' starting at row {safe_row}")
                         
                         # NO HEADERS - Template already has headers
                         # Just write data starting from the specified position
                         
                         # Write data (PURE VALUES ONLY - no column names)
-                        logger.info(f"Writing {len(table_data['data'])} data rows")
-                        data_rows = table_data['data']  # This is a list of lists - PURE VALUES
+                        logger.info(f"Writing {len(table_data['data'])} data rows (VALUES ONLY)")
+                        data_rows = table_data['data']  # This is a list of lists - PURE VALUES ONLY
                         for row_idx, row_data in enumerate(data_rows, start=0):  # Start from 0 to write at start row
                             for col_idx, value in enumerate(row_data, start=0):
                                 cell_col = start_col_idx + col_idx
@@ -1297,1160 +618,708 @@ class ExcelTableExporter:
                     return ExcelTableExporter.find_safe_row_for_table(ws, current_row)
         
         return current_row
-    
-    @staticmethod
-    def get_valid_sheet_name(name: str) -> str:
-        """Get valid Excel sheet name"""
-        # Remove invalid characters
-        invalid_chars = ['\\', '/', '*', '?', ':', '[', ']']
-        for char in invalid_chars:
-            name = name.replace(char, '_')
-        
-        # Truncate if too long
-        if len(name) > 31:
-            name = name[:28] + "..."
-        
-        # Ensure not empty
-        if not name.strip():
-            name = "Sheet"
-        
-        return name[:31]
-    
-    @staticmethod
-    def add_table_to_sheet(ws, table_data: Dict):
-        """Add a table to Excel sheet - NOT USED FOR TEMPLATE EXPORTS"""
-        # For new Excel files only - template exports don't use this
-        pass
 
 # ============================================================================
-# FILTER DIALOG FOR BATCH AND TIME RANGE (FIXED)
+# STREAMLIT APPLICATION
 # ============================================================================
 
-class FilterDialog:
-    """Dialog for selecting batch and time range filters"""
+def main():
+    st.set_page_config(
+        page_title="Excel Table Exporter",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
     
-    def __init__(self, parent, table_name: str, batches: List[str]):
-        self.parent = parent
-        self.table_name = table_name
-        self.batches = batches
-        self.selected_batch = ""
-        self.start_time = None
-        self.end_time = None
-        self.result = None
-        
-        self.create_dialog()
+    st.title("📊 Excel Table Exporter with Database Connection")
+    st.markdown("Export SQL Server tables to Excel templates with position mapping")
     
-    def create_dialog(self):
-        """Create the filter dialog"""
-        # Get parent window - handle both tkinter widget and app object
-        if hasattr(self.parent, 'root'):
-            parent_window = self.parent.root
-        else:
-            parent_window = self.parent
-            
-        self.dialog = tk.Toplevel(parent_window)
-        self.dialog.title(f"Filter Data for {self.table_name}")
-        self.dialog.geometry("500x400")
-        self.dialog.transient(parent_window)
-        self.dialog.grab_set()
-        
-        # Center dialog
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() - self.dialog.winfo_width()) // 2
-        y = (self.dialog.winfo_screenheight() - self.dialog.winfo_height()) // 2
-        self.dialog.geometry(f"+{x}+{y}")
-        
-        # Main container
-        main_frame = ttk.Frame(self.dialog, padding="20")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text=f"Filter Data", 
-                 font=('Arial', 14, 'bold')).pack(pady=(0, 10))
-        ttk.Label(main_frame, text=f"Table: {self.table_name}", 
-                 font=('Arial', 11)).pack(pady=(0, 20))
-        
-        # Batch selection
-        batch_frame = ttk.LabelFrame(main_frame, text="Select Batch", padding="10")
-        batch_frame.pack(fill='x', pady=(0, 20))
-        
-        if self.batches:
-            self.batch_var = tk.StringVar(value=self.batches[0])
-            batch_cb = ttk.Combobox(batch_frame, textvariable=self.batch_var, 
-                                   values=self.batches, width=40, state="readonly")
-            batch_cb.pack(fill='x', pady=5)
-        else:
-            ttk.Label(batch_frame, text="No batches found in table", 
-                     foreground="red").pack(pady=5)
-            self.batch_var = tk.StringVar(value="")
-        
-        # Time range selection
-        time_frame = ttk.LabelFrame(main_frame, text="Time Range (Optional)", padding="10")
-        time_frame.pack(fill='x', pady=(0, 20))
-        
-        # Start time
-        start_frame = ttk.Frame(time_frame)
-        start_frame.pack(fill='x', pady=5)
-        ttk.Label(start_frame, text="Start Time:", width=12).pack(side=tk.LEFT)
-        
-        # Default to 24 hours ago
-        default_start = datetime.now() - timedelta(hours=24)
-        self.start_date_var = tk.StringVar(value=default_start.strftime('%Y-%m-%d'))
-        self.start_time_var = tk.StringVar(value=default_start.strftime('%H:%M'))
-        
-        ttk.Entry(start_frame, textvariable=self.start_date_var, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Label(start_frame, text="at").pack(side=tk.LEFT, padx=2)
-        ttk.Entry(start_frame, textvariable=self.start_time_var, width=8).pack(side=tk.LEFT, padx=2)
-        ttk.Label(start_frame, text="(YYYY-MM-DD HH:MM)").pack(side=tk.LEFT, padx=5)
-        
-        # End time
-        end_frame = ttk.Frame(time_frame)
-        end_frame.pack(fill='x', pady=5)
-        ttk.Label(end_frame, text="End Time:", width=12).pack(side=tk.LEFT)
-        
-        # Default to now
-        default_end = datetime.now()
-        self.end_date_var = tk.StringVar(value=default_end.strftime('%Y-%m-%d'))
-        self.end_time_var = tk.StringVar(value=default_end.strftime('%H:%M'))
-        
-        ttk.Entry(end_frame, textvariable=self.end_date_var, width=12).pack(side=tk.LEFT, padx=2)
-        ttk.Label(end_frame, text="at").pack(side=tk.LEFT, padx=2)
-        ttk.Entry(end_frame, textvariable=self.end_time_var, width=8).pack(side=tk.LEFT, padx=2)
-        ttk.Label(end_frame, text="(YYYY-MM-DD HH:MM)").pack(side=tk.LEFT, padx=5)
-        
-        # Checkbox to enable/disable time filtering
-        self.enable_time_filter_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(time_frame, text="Enable time filtering", 
-                       variable=self.enable_time_filter_var).pack(anchor='w', pady=5)
-        
-        # Buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(fill='x', pady=20)
-        
-        ttk.Button(btn_frame, text="Apply Filters", command=self.apply, 
-                  style='Accent.TButton').pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=self.cancel).pack(side=tk.RIGHT, padx=5)
-        
-        # Clean up on close
-        self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
+    # Initialize session state
+    if 'db' not in st.session_state:
+        st.session_state.db = DatabaseManager()
+    if 'selected_tables' not in st.session_state:
+        st.session_state.selected_tables = []
+    if 'table_configs' not in st.session_state:
+        st.session_state.table_configs = {}
+    if 'filters' not in st.session_state:
+        st.session_state.filters = {}
+    if 'template_path' not in st.session_state:
+        st.session_state.template_path = None
+    if 'template_sheets' not in st.session_state:
+        st.session_state.template_sheets = []
+    if 'tables_list' not in st.session_state:
+        st.session_state.tables_list = []
+    if 'current_step' not in st.session_state:
+        st.session_state.current_step = 1
     
-    def apply(self):
-        """Apply the filters"""
-        # Get batch
-        if self.batches:
-            self.selected_batch = self.batch_var.get()
-            if not self.selected_batch:
-                messagebox.showwarning("No Batch", "Please select a batch.")
-                return
+    # Sidebar for navigation
+    with st.sidebar:
+        st.header("Navigation")
         
-        # Get time range if enabled
-        if self.enable_time_filter_var.get():
-            try:
-                # Parse start time
-                start_str = f"{self.start_date_var.get()} {self.start_time_var.get()}"
-                self.start_time = datetime.strptime(start_str, '%Y-%m-%d %H:%M')
-                
-                # Parse end time
-                end_str = f"{self.end_date_var.get()} {self.end_time_var.get()}"
-                self.end_time = datetime.strptime(end_str, '%Y-%m-%d %H:%M')
-                
-                # Validate time range
-                if self.start_time >= self.end_time:
-                    messagebox.showerror("Invalid Time Range", 
-                                       "Start time must be before end time.")
-                    return
-                    
-            except ValueError as e:
-                messagebox.showerror("Invalid Time Format", 
-                                   f"Please use format: YYYY-MM-DD HH:MM\nError: {str(e)}")
-                return
-        
-        self.result = {
-            'batch': self.selected_batch,
-            'start_time': self.start_time,
-            'end_time': self.end_time
-        }
-        
-        self.dialog.destroy()
-    
-    def cancel(self):
-        """Cancel the dialog"""
-        self.result = None
-        self.dialog.destroy()
-    
-    def get_result(self) -> Optional[Dict]:
-        """Get the filter result"""
-        return self.result
-
-# ============================================================================
-# MAIN APPLICATION
-# ============================================================================
-
-class MultiTableExporterApp:
-    """Main Application with filtering capabilities"""
-    
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Excel Table Exporter with Filters")
-        self.root.geometry("1200x800")
-        
-        # Database connection
-        self.db = DatabaseManager()
-        self.exporter = ExcelTableExporter()
-        
-        # Variables
-        self.server_var = tk.StringVar(value="MAHESHWAGH\\WINCC")
-        self.database_var = tk.StringVar(value="VPI1")
-        
-        # Table selection and configuration
-        self.selected_tables = []
-        self.table_checkboxes = {}
-        self.table_configs = {}  # table_name -> TableConfig
-        
-        # Template
-        self.template_path = None
-        self.template_sheets = []
-        
-        # Filters
-        self.filters = {}  # table_name -> filter settings
-        
-        # Merge rules
-        self.merge_rules = []
-        
-        # Setup UI
-        self.setup_ui()
-        
-        # Bind window close
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-    
-    def setup_ui(self):
-        """Setup the user interface"""
-        # Create main container
-        main_container = ttk.Frame(self.root, padding="10")
-        main_container.pack(fill='both', expand=True)
-        
-        # Create notebook for tabs
-        self.notebook = ttk.Notebook(main_container)
-        self.notebook.pack(fill='both', expand=True)
-        
-        # Create tabs
-        self.setup_connection_tab()
-        self.setup_table_selection_tab()
-        self.setup_position_mapping_tab()
-        self.setup_export_tab()
-        
-        # Status bar
-        self.status_bar = ttk.Label(self.root, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-    
-    def setup_connection_tab(self):
-        """Setup Connection Tab"""
-        conn_tab = ttk.Frame(self.notebook)
-        self.notebook.add(conn_tab, text="Connection")
-        
-        # Main frame
-        main_frame = ttk.Frame(conn_tab, padding="20")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text="Database Connection", font=('Arial', 16, 'bold')).pack(pady=(0, 20))
-        
-        # Server
-        server_frame = ttk.Frame(main_frame)
-        server_frame.pack(fill='x', pady=5)
-        ttk.Label(server_frame, text="Server:", width=15).pack(side=tk.LEFT)
-        ttk.Entry(server_frame, textvariable=self.server_var).pack(side=tk.LEFT, fill='x', expand=True, padx=5)
-        
-        # Database
-        db_frame = ttk.Frame(main_frame)
-        db_frame.pack(fill='x', pady=5)
-        ttk.Label(db_frame, text="Database:", width=15).pack(side=tk.LEFT)
-        ttk.Entry(db_frame, textvariable=self.database_var).pack(side=tk.LEFT, fill='x', expand=True, padx=5)
-        
-        # Connection buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(pady=20)
-        ttk.Button(btn_frame, text="Connect", command=self.connect_db).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Disconnect", command=self.disconnect_db).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Test Connection", command=self.test_connection).pack(side=tk.LEFT, padx=5)
-    
-    def setup_table_selection_tab(self):
-        """Setup Table Selection Tab"""
-        selection_tab = ttk.Frame(self.notebook)
-        self.notebook.add(selection_tab, text="Table Selection")
-        
-        # Main frame with scrollbar
-        main_frame = ttk.Frame(selection_tab)
-        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Control buttons
-        control_frame = ttk.Frame(main_frame)
-        control_frame.pack(fill='x', pady=(0, 10))
-        
-        ttk.Button(control_frame, text="Select All", command=self.select_all_tables).pack(side=tk.LEFT, padx=2)
-        ttk.Button(control_frame, text="Clear All", command=self.clear_all_tables).pack(side=tk.LEFT, padx=2)
-        ttk.Button(control_frame, text="Refresh", command=self.refresh_tables).pack(side=tk.LEFT, padx=2)
-        
-        # Filter button
-        self.filter_btn = ttk.Button(control_frame, text="Set Filters", 
-                                    command=self.set_filters, state='disabled')
-        self.filter_btn.pack(side=tk.LEFT, padx=10)
-        
-        # Selected count label
-        self.selected_count_label = ttk.Label(control_frame, text="0 tables selected", font=('Arial', 10))
-        self.selected_count_label.pack(side=tk.RIGHT, padx=10)
-        
-        # Current filters label
-        self.filters_label = ttk.Label(control_frame, text="No filters set", font=('Arial', 9), foreground="blue")
-        self.filters_label.pack(side=tk.RIGHT, padx=10)
-        
-        # Create scrollable canvas for tables
-        canvas = tk.Canvas(main_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        self.checkbox_container = ttk.Frame(canvas)
-        
-        canvas.pack(side=tk.LEFT, fill='both', expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill='y')
-        
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.create_window((0, 0), window=self.checkbox_container, anchor="nw")
-        
-        # Configure scrolling
-        def on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        
-        self.checkbox_container.bind("<Configure>", on_frame_configure)
-        
-        # Safe mouse wheel binding
-        def on_mousewheel(event):
-            try:
-                canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-            except tk.TclError:
-                pass
-        
-        canvas.bind("<MouseWheel>", on_mousewheel)
-    
-    def setup_position_mapping_tab(self):
-        """Setup Position Mapping Tab"""
-        mapping_tab = ttk.Frame(self.notebook)
-        self.notebook.add(mapping_tab, text="Position Mapping")
-        
-        # Main frame
-        main_frame = ttk.Frame(mapping_tab, padding="20")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text="Position Mapping Configuration", 
-                 font=('Arial', 16, 'bold')).pack(pady=(0, 20))
-        
-        # Template section
-        template_frame = ttk.LabelFrame(main_frame, text="Template", padding="10")
-        template_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Button(template_frame, text="Select Template", 
-                  command=self.select_template).pack(side=tk.LEFT, padx=5)
-        self.template_label = ttk.Label(template_frame, text="No template selected")
-        self.template_label.pack(side=tk.LEFT, padx=10)
-        ttk.Button(template_frame, text="Clear Template", 
-                  command=self.clear_template).pack(side=tk.LEFT, padx=5)
-        
-        # Template info label
-        self.template_info_label = ttk.Label(template_frame, text="", font=('Arial', 9))
-        self.template_info_label.pack(side=tk.LEFT, padx=20)
-        
-        # Merge rules section
-        merge_frame = ttk.LabelFrame(main_frame, text="Merge Cell Rules (Optional)", padding="10")
-        merge_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(merge_frame, text="Enter merge ranges (one per line): SheetName!StartCell:EndCell", 
-                 font=('Arial', 9)).pack(anchor='w', pady=(0, 5))
-        
-        self.merge_rules_text = tk.Text(merge_frame, height=3, width=80, font=('Consolas', 9))
-        self.merge_rules_text.pack(fill='x', pady=(0, 5))
-        
-        example_label = ttk.Label(merge_frame, 
-                                 text="Example: Sheet1!B4:D4  (merges B4, C4, D4)\nExample: Sheet1!A1:C1  (merges A1, B1, C1)",
-                                 font=('Arial', 8), foreground='blue')
-        example_label.pack(anchor='w')
-        
-        # Instructions
-        instr_frame = ttk.LabelFrame(main_frame, text="Instructions", padding="10")
-        instr_frame.pack(fill='x', pady=(0, 20))
-        
-        instructions = [
-            "TWO TYPES OF CONFIGURATION:",
-            "1. For BACKGROUND_DATA and BATCH_DATA tables:",
-            "   • You only need to specify a starting cell position",
-            "   • All data will be inserted starting from this cell",
-            "   • Template already has headers - only values inserted",
-            "",
-            "2. For HEADER tables (and similar):",
-            "   • You need to map each column to a specific cell",
-            "   • Only the first row of data will be used",
-            "   • Useful for header/static information",
-            "",
-            "Click 'Configure Position Mappings' to begin."
+        # Step indicators
+        steps = [
+            ("🔗", "Connection", 1),
+            ("📋", "Table Selection", 2),
+            ("📍", "Position Mapping", 3),
+            ("⚙️", "Filters", 4),
+            ("📤", "Export", 5)
         ]
         
-        for instr in instructions:
-            ttk.Label(instr_frame, text=instr, font=('Arial', 9)).pack(anchor='w', pady=1)
+        for icon, name, step_num in steps:
+            if step_num == st.session_state.current_step:
+                st.markdown(f"**{icon} {name}**")
+            else:
+                if st.button(f"{icon} {name}", key=f"nav_{step_num}", use_container_width=True):
+                    st.session_state.current_step = step_num
+                    st.rerun()
         
-        # Configuration button
-        self.config_btn = ttk.Button(main_frame, text="Configure Position Mappings", 
-                                    command=self.configure_positions, state='disabled')
-        self.config_btn.pack(pady=10)
+        st.divider()
         
-        # Current mappings display
-        mapping_frame = ttk.LabelFrame(main_frame, text="Current Mappings", padding="10")
-        mapping_frame.pack(fill='both', expand=True)
+        # Connection status
+        if st.session_state.db.connected:
+            st.success("✅ Connected")
+            if st.button("🔌 Disconnect"):
+                st.session_state.db.disconnect()
+                st.session_state.tables_list = []
+                st.session_state.selected_tables = []
+                st.success("Disconnected")
+                st.rerun()
+        else:
+            st.warning("⚠️ Not Connected")
         
-        self.mapping_text = scrolledtext.ScrolledText(mapping_frame, height=15, wrap=tk.WORD, font=('Consolas', 9))
-        self.mapping_text.pack(fill='both', expand=True)
-        self.update_mapping_display()
+        # Selected tables count
+        if st.session_state.selected_tables:
+            st.info(f"📋 {len(st.session_state.selected_tables)} tables selected")
     
-    def setup_export_tab(self):
-        """Setup Export Tab"""
-        export_tab = ttk.Frame(self.notebook)
-        self.notebook.add(export_tab, text="Export")
-        
-        # Main frame
-        main_frame = ttk.Frame(export_tab, padding="20")
-        main_frame.pack(fill='both', expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text="Export Options", font=('Arial', 16, 'bold')).pack(pady=(0, 20))
-        
-        # Export options
-        options_frame = ttk.LabelFrame(main_frame, text="Export Settings", padding="10")
-        options_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(options_frame, text="Row limit (0 = all):").pack(anchor='w', pady=2)
-        self.row_limit_var = tk.StringVar(value="0")
-        ttk.Entry(options_frame, textvariable=self.row_limit_var, width=10).pack(anchor='w', pady=2)
-        
-        # Export buttons
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(pady=20)
-        
-        self.export_btn = ttk.Button(btn_frame, text="Export to New Excel", 
-                                    command=self.export_new_excel, state='normal')
-        self.export_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.template_export_btn = ttk.Button(btn_frame, text="Export to Template", 
-                                             command=self.export_to_template, state='disabled')
-        self.template_export_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Log area
-        log_frame = ttk.LabelFrame(main_frame, text="Export Log", padding="10")
-        log_frame.pack(fill='both', expand=True)
-        
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=10, wrap=tk.WORD, font=('Consolas', 9))
-        self.log_text.pack(fill='both', expand=True)
-        
-        # Configure log tags
-        self.log_text.tag_configure('success', foreground='green', font=('Consolas', 9, 'bold'))
-        self.log_text.tag_configure('error', foreground='red', font=('Consolas', 9, 'bold'))
-        self.log_text.tag_configure('info', foreground='blue', font=('Consolas', 9))
-        self.log_text.tag_configure('warning', foreground='orange', font=('Consolas', 9))
-        self.log_text.tag_configure('debug', foreground='gray', font=('Consolas', 9))
+    # Main content based on current step
+    if st.session_state.current_step == 1:
+        show_connection_tab()
+    elif st.session_state.current_step == 2:
+        show_table_selection_tab()
+    elif st.session_state.current_step == 3:
+        show_position_mapping_tab()
+    elif st.session_state.current_step == 4:
+        show_filters_tab()
+    elif st.session_state.current_step == 5:
+        show_export_tab()
+
+def show_connection_tab():
+    """Show connection tab"""
+    st.header("Step 1: Database Connection")
     
-    def test_connection(self):
-        """Test database connection"""
-        def test():
-            self.status_bar.config(text="Testing connection...")
-            
-            try:
-                success, message = self.db.connect(
-                    server=self.server_var.get(),
-                    database=self.database_var.get(),
-                    use_windows_auth=True
+    col1, col2 = st.columns(2)
+    with col1:
+        server = st.text_input("Server", value="MAHESHWAGH\\WINCC")
+        database = st.text_input("Database", value="VPI1")
+    
+    with col2:
+        auth_type = st.radio("Authentication", ["Windows Authentication", "SQL Server Authentication"])
+        
+        if auth_type == "SQL Server Authentication":
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+        else:
+            username = None
+            password = None
+    
+    # SSL/Encryption options
+    st.subheader("SSL/Encryption Settings")
+    col1, col2 = st.columns(2)
+    with col1:
+        encrypt = st.checkbox("Encrypt connection", value=True)
+    with col2:
+        trust_cert = st.checkbox("Trust Server Certificate", value=True, 
+                                help="Check this to fix SSL certificate errors")
+    
+    # Connection buttons
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🔗 Connect & Next", type="primary", use_container_width=True):
+            with st.spinner("Connecting to database..."):
+                use_windows_auth = auth_type == "Windows Authentication"
+                success, message = st.session_state.db.connect(
+                    server=server,
+                    database=database,
+                    username=username,
+                    password=password,
+                    use_windows_auth=use_windows_auth,
+                    encrypt=encrypt,
+                    trust_server_cert=trust_cert
                 )
                 
                 if success:
-                    self.status_bar.config(text="Connection test successful")
-                    self.db.disconnect()
-                    messagebox.showinfo("Connection Test", "Connection successful!")
-                    self.log("Connection test successful", 'success')
+                    st.success("✅ Connected successfully!")
+                    # Load tables
+                    st.session_state.tables_list = st.session_state.db.get_tables()
+                    # Move to next step
+                    st.session_state.current_step = 2
+                    st.rerun()
                 else:
-                    self.status_bar.config(text="Connection test failed")
-                    messagebox.showerror("Connection Test", f"Connection failed:\n{message}")
-                    self.log(f"Connection test failed: {message}", 'error')
-                    
-            except Exception as e:
-                self.status_bar.config(text=f"Error: {str(e)}")
-                messagebox.showerror("Connection Test", f"Error during connection test:\n{str(e)}")
-                self.log(f"Connection test error: {str(e)}", 'error')
-        
-        threading.Thread(target=test, daemon=True).start()
+                    st.error(f"❌ Connection failed: {message}")
     
-    def connect_db(self):
-        """Connect to database"""
-        def connect():
-            self.status_bar.config(text="Connecting...")
-            
-            try:
-                success, message = self.db.connect(
-                    server=self.server_var.get(),
-                    database=self.database_var.get(),
-                    use_windows_auth=True
+    with col2:
+        if st.button("🔗 Connect", use_container_width=True):
+            with st.spinner("Connecting to database..."):
+                use_windows_auth = auth_type == "Windows Authentication"
+                success, message = st.session_state.db.connect(
+                    server=server,
+                    database=database,
+                    username=username,
+                    password=password,
+                    use_windows_auth=use_windows_auth,
+                    encrypt=encrypt,
+                    trust_server_cert=trust_cert
                 )
                 
                 if success:
-                    self.status_bar.config(text="Connected successfully")
-                    self.refresh_tables()
-                    self.log("[OK] Database connected successfully", 'success')
+                    st.success("✅ Connected successfully!")
+                    # Load tables
+                    st.session_state.tables_list = st.session_state.db.get_tables()
+                    st.rerun()
                 else:
-                    self.status_bar.config(text=f"Connection failed: {message}")
-                    messagebox.showerror("Connection Error", message)
-                    self.log(f"[ERROR] Connection failed: {message}", 'error')
-                    
-            except Exception as e:
-                self.status_bar.config(text=f"Error: {str(e)}")
-                messagebox.showerror("Connection Error", f"Error during connection:\n{str(e)}")
-                self.log(f"[ERROR] Connection error: {str(e)}", 'error')
-        
-        threading.Thread(target=connect, daemon=True).start()
+                    st.error(f"❌ Connection failed: {message}")
     
-    def disconnect_db(self):
-        """Disconnect from database"""
+    with col3:
+        if st.button("🔄 Test Connection", use_container_width=True):
+            with st.spinner("Testing connection..."):
+                use_windows_auth = auth_type == "Windows Authentication"
+                success, message = st.session_state.db.connect(
+                    server=server,
+                    database=database,
+                    username=username,
+                    password=password,
+                    use_windows_auth=use_windows_auth,
+                    encrypt=encrypt,
+                    trust_server_cert=trust_cert
+                )
+                
+                if success:
+                    st.success("✅ Connection test successful!")
+                    st.session_state.db.disconnect()
+                else:
+                    st.error(f"❌ Connection test failed: {message}")
+    
+    # Show connection status
+    if st.session_state.db.connected:
+        st.info(f"✅ Connected to {st.session_state.db.server}.{st.session_state.db.database}")
+    else:
+        st.warning("⚠️ Not connected to database")
+
+def show_table_selection_tab():
+    """Show table selection tab"""
+    st.header("Step 2: Table Selection")
+    
+    if not st.session_state.db.connected:
+        st.warning("Please connect to database first")
+        if st.button("← Go to Connection"):
+            st.session_state.current_step = 1
+            st.rerun()
+        return
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        st.subheader(f"Available Tables ({len(st.session_state.tables_list)})")
+    
+    with col2:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.session_state.tables_list = st.session_state.db.get_tables()
+            st.rerun()
+    
+    # Table selection
+    if st.session_state.tables_list:
+        # Select all/none buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Select All", use_container_width=True):
+                st.session_state.selected_tables = st.session_state.tables_list.copy()
+                st.rerun()
+        with col2:
+            if st.button("❌ Clear All", use_container_width=True):
+                st.session_state.selected_tables = []
+                st.rerun()
+        
+        # Multi-select for tables
+        selected = st.multiselect(
+            "Select tables to export:",
+            st.session_state.tables_list,
+            default=st.session_state.selected_tables,
+            placeholder="Choose tables..."
+        )
+        
+        st.session_state.selected_tables = selected
+        
+        st.info(f"Selected {len(selected)} table(s)")
+        
+        # Show selected tables
+        if selected:
+            st.write("Selected tables:")
+            for i, table in enumerate(selected, 1):
+                st.write(f"{i}. {table}")
+        
+        # Navigation buttons
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("← Previous: Connection", use_container_width=True):
+                st.session_state.current_step = 1
+                st.rerun()
+        
+        with col3:
+            if st.button("Next: Position Mapping →", type="primary", use_container_width=True):
+                if not st.session_state.selected_tables:
+                    st.warning("Please select at least one table")
+                else:
+                    st.session_state.current_step = 3
+                    st.rerun()
+    else:
+        st.info("No tables found in database")
+        
+        # Navigation button
+        if st.button("← Previous: Connection"):
+            st.session_state.current_step = 1
+            st.rerun()
+
+def show_position_mapping_tab():
+    """Show position mapping tab"""
+    st.header("Step 3: Position Mapping")
+    
+    if not st.session_state.selected_tables:
+        st.warning("Please select tables first")
+        if st.button("← Go to Table Selection"):
+            st.session_state.current_step = 2
+            st.rerun()
+        return
+    
+    # Template upload
+    st.subheader("Upload Excel Template")
+    uploaded_template = st.file_uploader(
+        "Choose an Excel template file", 
+        type=['xlsx', 'xls']
+    )
+    
+    if uploaded_template is not None:
+        # Save uploaded template
+        temp_dir = tempfile.gettempdir()
+        template_path = os.path.join(temp_dir, uploaded_template.name)
+        
+        with open(template_path, "wb") as f:
+            f.write(uploaded_template.getbuffer())
+        
+        st.session_state.template_path = template_path
+        
+        # Get sheet names
         try:
-            self.db.disconnect()
-            self.status_bar.config(text="Disconnected")
-            self.clear_table_checkboxes()
-            self.selected_tables.clear()
-            self.selected_count_label.config(text="0 tables selected")
-            self.filters_label.config(text="No filters set")
-            self.filters.clear()
-            self.log("[DISCONNECT] Disconnected from database", 'info')
+            wb = load_workbook(template_path, read_only=True)
+            st.session_state.template_sheets = wb.sheetnames
+            st.success(f"✅ Template loaded with {len(st.session_state.template_sheets)} sheets")
+            
+            # Show sheet names
+            with st.expander("View Sheets"):
+                for sheet in st.session_state.template_sheets:
+                    st.write(f"• {sheet}")
         except Exception as e:
-            self.log(f"[ERROR] Error during disconnect: {str(e)}", 'error')
+            st.error(f"Error reading template: {e}")
+    elif st.session_state.template_path:
+        st.info(f"Template loaded: {os.path.basename(st.session_state.template_path)}")
     
-    def refresh_tables(self):
-        """Refresh list of tables"""
-        if not self.db.connected:
-            messagebox.showwarning("Not Connected", "Please connect to database first")
-            return
-        
-        def refresh():
-            self.status_bar.config(text="Loading tables...")
-            
-            try:
-                tables = self.db.get_tables()
-                self.create_table_checkboxes(tables)
-                self.status_bar.config(text=f"Loaded {len(tables)} tables")
-                self.selected_count_label.config(text=f"{len(self.selected_tables)} tables selected")
-                self.log(f"[OK] Loaded {len(tables)} tables", 'success')
-            except Exception as e:
-                self.status_bar.config(text=f"Error loading tables: {str(e)}")
-                self.log(f"[ERROR] Error loading tables: {str(e)}", 'error')
-        
-        threading.Thread(target=refresh, daemon=True).start()
+    # Merge rules
+    st.subheader("Merge Cell Rules (Optional)")
+    merge_rules_text = st.text_area(
+        "Enter merge ranges (one per line): SheetName!StartCell:EndCell",
+        height=100,
+        help="Example: Sheet1!B4:D4  (merges B4, C4, D4)\nExample: Sheet1!A1:C1  (merges A1, B1, C1)"
+    )
     
-    def create_table_checkboxes(self, tables: List[str]):
-        """Create checkboxes for table selection"""
-        # Clear existing checkboxes
-        self.clear_table_checkboxes()
-        self.table_checkboxes.clear()
-        
-        # Create new checkboxes
-        for i, table in enumerate(tables):
-            var = tk.BooleanVar(value=False)
-            self.table_checkboxes[table] = var
-            
-            cb_frame = ttk.Frame(self.checkbox_container)
-            cb_frame.pack(fill='x', padx=5, pady=2)
-            
-            cb = ttk.Checkbutton(cb_frame, text=table, variable=var,
-                                command=self.update_selected_count)
-            cb.pack(anchor='w')
-        
-        self.update_selected_count()
+    # Position configuration for each table
+    st.subheader("Configure Position Mappings")
     
-    def clear_table_checkboxes(self):
-        """Clear all table checkboxes"""
-        for widget in self.checkbox_container.winfo_children():
-            widget.destroy()
-    
-    def select_all_tables(self):
-        """Select all tables"""
-        for var in self.table_checkboxes.values():
-            var.set(True)
-        self.update_selected_count()
-        self.log("[OK] Selected all tables", 'info')
-    
-    def clear_all_tables(self):
-        """Clear all table selections"""
-        for var in self.table_checkboxes.values():
-            var.set(False)
-        self.update_selected_count()
-        self.log("[CLEAR] Cleared all table selections", 'info')
-    
-    def update_selected_count(self):
-        """Update selected tables count"""
-        self.selected_tables = [table for table, var in self.table_checkboxes.items() if var.get()]
-        count = len(self.selected_tables)
-        self.selected_count_label.config(text=f"{count} table{'s' if count != 1 else ''} selected")
+    if not st.session_state.template_path:
+        st.warning("Please upload a template first")
+    else:
+        # Store configurations temporarily
+        temp_configs = {}
         
-        # Enable/disable buttons based on selection
-        if self.selected_tables:
-            self.filter_btn.config(state='normal')
-            if self.template_path:
-                self.config_btn.config(state='normal')
-                self.template_export_btn.config(state='normal')
-        else:
-            self.filter_btn.config(state='disabled')
-            self.config_btn.config(state='disabled')
-            if not self.template_path:
-                self.template_export_btn.config(state='disabled')
-    
-    def set_filters(self):
-        """Set filters for selected tables"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
-            return
-        
-        # For now, apply same filters to all selected tables
-        # Get batches from first selected table
-        table_name = self.selected_tables[0]
-        
-        def get_batches():
-            try:
-                batches = self.db.get_batches_from_table(table_name)
-                self.root.after(0, lambda: show_filter_dialog(table_name, batches))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to get batches: {str(e)}"))
-        
-        def show_filter_dialog(t_name, batches):
-            # Pass self.root (tkinter widget) instead of self (app object)
-            dialog = FilterDialog(self.root, t_name, batches)
-            self.root.wait_window(dialog.dialog)
-            
-            result = dialog.get_result()
-            if result:
-                # Apply filters to all selected tables
-                for table in self.selected_tables:
-                    self.filters[table] = result
+        for table_name in st.session_state.selected_tables:
+            with st.expander(f"Configure {table_name}", expanded=False):
+                # Determine if this is a simple table or needs column mapping
+                is_simple = any(keyword in table_name.upper() for keyword in 
+                               ['BACKGROUND', 'BATCH', 'DATA'])
                 
-                # Update filters label
-                filter_text = f"Batch: {result['batch']}"
-                if result['start_time'] and result['end_time']:
-                    filter_text += f" | Time: {result['start_time'].strftime('%Y-%m-%d %H:%M')} to {result['end_time'].strftime('%Y-%m-%d %H:%M')}"
-                self.filters_label.config(text=filter_text)
-                
-                self.log(f"Filters set for {len(self.selected_tables)} tables: {filter_text}", 'info')
-        
-        threading.Thread(target=get_batches, daemon=True).start()
-    
-    def select_template(self):
-        """Select an Excel template file"""
-        filetypes = [("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
-        filename = filedialog.askopenfilename(title="Select Excel Template", filetypes=filetypes)
-        
-        if filename:
-            self.template_path = filename
-            self.template_label.config(text=os.path.basename(filename))
-            
-            # Get sheet names from template
-            try:
-                wb = load_workbook(filename, read_only=True)
-                self.template_sheets = wb.sheetnames
-                sheet_info = f"{len(self.template_sheets)} sheets: {', '.join(self.template_sheets[:3])}"
-                if len(self.template_sheets) > 3:
-                    sheet_info += f" (+{len(self.template_sheets)-3} more)"
-                self.template_info_label.config(text=sheet_info)
-                
-                self.log(f"[OK] Template selected: {os.path.basename(filename)} with {len(self.template_sheets)} sheets", 'success')
-            except Exception as e:
-                self.log(f"[ERROR] Error reading template: {str(e)}", 'error')
-                self.template_sheets = []
-                self.template_info_label.config(text="")
-            
-            # Enable buttons if tables are selected
-            if self.selected_tables:
-                self.config_btn.config(state='normal')
-                self.template_export_btn.config(state='normal')
-    
-    def clear_template(self):
-        """Clear the selected template"""
-        self.template_path = None
-        self.template_sheets = []
-        self.template_label.config(text="No template selected")
-        self.template_info_label.config(text="")
-        self.config_btn.config(state='disabled')
-        self.template_export_btn.config(state='disabled')
-        self.log("[CLEAR] Template cleared", 'info')
-    
-    def configure_positions(self):
-        """Configure position mappings for selected tables"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
-            return
-        
-        if not self.template_path:
-            messagebox.showwarning("No Template", "Please select a template first")
-            return
-        
-        if not self.template_sheets:
-            messagebox.showerror("No Sheets", "Template has no sheets or could not be read")
-            return
-        
-        # Get merge rules from text box
-        try:
-            merge_text = self.merge_rules_text.get("1.0", tk.END).strip()
-            self.merge_rules = [line.strip() for line in merge_text.splitlines() if line.strip()]
-            if self.merge_rules:
-                self.log(f"Added {len(self.merge_rules)} merge rules", 'info')
-        except:
-            self.merge_rules = []
-        
-        # Configure each selected table
-        for table_name in self.selected_tables:
-            # Check if this is BACKGROUND_DATA or BATCH_DATA type table
-            is_simple_table = any(keyword in table_name.upper() for keyword in 
-                                 ['BACKGROUND', 'BATCH', 'DATA'])
-            
-            if is_simple_table:
-                # Use simple position dialog for BACKGROUND_DATA and BATCH_DATA
-                self.configure_simple_table_position(table_name)
-            else:
-                # Use column mapping dialog for other tables (like HEADER)
-                # First, get DB columns for mapping
-                try:
-                    db_columns = self.db.get_table_columns(table_name)
-                    self.configure_table_with_column_mappings(table_name, db_columns)
-                except Exception as e:
-                    self.log(f"[ERROR] Could not get columns for {table_name}: {e}", 'error')
-                    messagebox.showerror("Error", f"Could not get columns for {table_name}: {str(e)}")
-        
-        # Update display
-        self.update_mapping_display()
-        messagebox.showinfo("Configuration Complete", 
-                          f"Position mappings configured for {len(self.selected_tables)} tables")
-    
-    def configure_simple_table_position(self, table_name: str):
-        """Configure simple start position for BACKGROUND_DATA/BATCH_DATA"""
-        # Show simple position dialog - pass self.root (tkinter widget)
-        dialog = SimplePositionDialog(self.root, table_name, self.template_sheets)
-        self.root.wait_window(dialog.dialog)
-        
-        # Get result
-        result = dialog.get_result()
-        if result is None:
-            return  # User cancelled
-        
-        # Create or update table configuration
-        if table_name not in self.table_configs:
-            self.table_configs[table_name] = TableConfig(
-                table_name=table_name,
-                display_name=self.db.get_display_name(table_name),
-                start_row=result['start_row'],
-                start_col=result['start_col'],
-                sheet_name=result['sheet_name'],
-                column_mappings={},  # Empty for simple tables
-                apply_to_all_sheets=result['apply_to_all'],
-                selected_sheets=result['selected_sheets']
-            )
-        else:
-            # Update existing config
-            config = self.table_configs[table_name]
-            config.start_row = result['start_row']
-            config.start_col = result['start_col']
-            config.sheet_name = result['sheet_name']
-            config.apply_to_all_sheets = result['apply_to_all']
-            config.selected_sheets = result['selected_sheets']
-        
-        self.log(f"[OK] Configured start position for {table_name}: {result['start_col']}{result['start_row']}", 'success')
-    
-    def configure_table_with_column_mappings(self, table_name: str, db_columns: List[str]):
-        """Configure column mappings for tables like HEADER"""
-        # Show mapping dialog - pass self.root (tkinter widget)
-        dialog = PositionMappingDialog(self.root, table_name, db_columns, self.template_sheets)
-        self.root.wait_window(dialog.dialog)
-        
-        # Get mappings
-        mappings = dialog.get_mappings()
-        if mappings is None:
-            return  # User cancelled
-        
-        # Create or update table configuration
-        if table_name not in self.table_configs:
-            self.table_configs[table_name] = TableConfig(
-                table_name=table_name,
-                display_name=self.db.get_display_name(table_name),
-                start_row=0,  # No start position for header tables
-                start_col="",  # No start column for header tables
-                sheet_name=self.template_sheets[0] if self.template_sheets else "",
-                column_mappings={},
-                apply_to_all_sheets=False,
-                selected_sheets=[]
-            )
-        
-        # Add column mappings
-        for column_name, (sheet_name, cell_reference, apply_all, target_sheets) in mappings.items():
-            self.table_configs[table_name].column_mappings[column_name] = CellMapping(
-                table_name=table_name,
-                column_name=column_name,
-                template_sheet=sheet_name,
-                template_cell=cell_reference,
-                apply_to_all_sheets=apply_all,
-                selected_sheets=target_sheets
-            )
-        
-        self.log(f"[OK] Configured {len(mappings)} column mappings for {table_name}", 'success')
-    
-    def update_mapping_display(self):
-        """Update position mapping display"""
-        self.mapping_text.delete(1.0, tk.END)
-        
-        if not self.table_configs:
-            self.mapping_text.insert(1.0, "No position mappings configured yet.\n\n")
-            self.mapping_text.insert(tk.END, "Click 'Configure Position Mappings' to set up mappings.")
-            return
-        
-        self.mapping_text.insert(tk.END, "POSITION MAPPINGS CONFIGURED\n")
-        self.mapping_text.insert(tk.END, "="*60 + "\n\n")
-        
-        # Show merge rules
-        if self.merge_rules:
-            self.mapping_text.insert(tk.END, "Merge Rules:\n")
-            for rule in self.merge_rules:
-                self.mapping_text.insert(tk.END, f"  • {rule}\n")
-            self.mapping_text.insert(tk.END, "\n")
-        
-        # Show table mappings
-        for table_name, config in self.table_configs.items():
-            self.mapping_text.insert(tk.END, f"[TABLE] {config.display_name}\n")
-            
-            # Check if this is a simple table or header table
-            is_simple_table = config.start_row > 0 and config.start_col
-            
-            if is_simple_table:
-                # Show simple position info
-                self.mapping_text.insert(tk.END, f"   Type: Data Table (BACKGROUND/BATCH)\n")
-                self.mapping_text.insert(tk.END, f"   Start Position: {config.start_col}{config.start_row}\n")
-                
-                if config.apply_to_all_sheets:
-                    self.mapping_text.insert(tk.END, f"   Apply to: All Sheets\n")
-                elif config.selected_sheets:
-                    sheets = config.selected_sheets
-                    if len(sheets) <= 3:
-                        self.mapping_text.insert(tk.END, f"   Apply to: {', '.join(sheets)}\n")
+                if is_simple:
+                    st.write("**Simple Table (BACKGROUND/BATCH/DATA)**")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        sheet = st.selectbox(
+                            f"Select sheet for {table_name}",
+                            st.session_state.template_sheets,
+                            key=f"sheet_{table_name}"
+                        )
+                    
+                    with col2:
+                        start_cell = st.text_input(
+                            f"Start cell for {table_name}",
+                            value="A1",
+                            key=f"cell_{table_name}",
+                            help="Enter cell reference like B4, C10, D20"
+                        )
+                    
+                    # Apply to all sheets option
+                    apply_all = st.checkbox(
+                        f"Apply to all sheets",
+                        value=False,
+                        key=f"apply_all_{table_name}"
+                    )
+                    
+                    selected_sheets = []
+                    if not apply_all:
+                        selected_sheets = st.multiselect(
+                            f"Select specific sheets for {table_name}",
+                            st.session_state.template_sheets,
+                            default=[sheet],
+                            key=f"selected_sheets_{table_name}"
+                        )
                     else:
-                        self.mapping_text.insert(tk.END, f"   Apply to: {', '.join(sheets[:3])} +{len(sheets)-3} more\n")
-                else:
-                    self.mapping_text.insert(tk.END, f"   Apply to: {config.sheet_name}\n")
-                
-                self.mapping_text.insert(tk.END, f"   Values will be inserted starting at this position\n")
-                self.mapping_text.insert(tk.END, f"   Template headers remain AS IS\n")
-            else:
-                # Show column mapping info
-                self.mapping_text.insert(tk.END, f"   Type: Header/Static Data\n")
-                self.mapping_text.insert(tk.END, f"   Total Mappings: {len(config.column_mappings)}\n")
-                
-                if config.column_mappings:
-                    self.mapping_text.insert(tk.END, "   Column Mappings:\n")
-                    for col_name, cell_mapping in config.column_mappings.items():
-                        if cell_mapping.apply_to_all_sheets:
-                            apply_info = " (All Sheets)"
-                        elif cell_mapping.selected_sheets:
-                            sheets = cell_mapping.selected_sheets
-                            if len(sheets) <= 3:
-                                apply_info = f" (Sheets: {', '.join(sheets)})"
-                            else:
-                                apply_info = f" (Sheets: {', '.join(sheets[:3])} +{len(sheets)-3} more)"
+                        selected_sheets = st.session_state.template_sheets
+                    
+                    # Validate and save configuration
+                    if st.button(f"Save configuration for {table_name}", key=f"save_simple_{table_name}"):
+                        if not re.match(r'^[A-Z]+\d+$', start_cell.upper()):
+                            st.error("Invalid cell format. Use like B4, C10, D20")
                         else:
-                            apply_info = f" (Sheet: {cell_mapping.template_sheet})"
-                        
-                        self.mapping_text.insert(tk.END, f"     • {col_name} → {cell_mapping.template_cell}{apply_info}\n")
-            
-            self.mapping_text.insert(tk.END, "\n")
-    
-    def fetch_filtered_table_data(self, limit: int = 0) -> Dict:
-        """Fetch data for all selected tables with filters applied - VALUES ONLY"""
-        tables_data = {}
-        
-        if not self.db.connected:
-            self.log("[ERROR] Database not connected", 'error')
-            return tables_data
-        
-        self.log(f"[FETCH] Fetching filtered data for {len(self.selected_tables)} tables...", 'info')
-        
-        for table in self.selected_tables:
-            try:
-                self.log(f"Fetching {table} with filters...", 'info')
+                            # Parse cell
+                            col_letter = ''.join([c for c in start_cell.upper() if c.isalpha()])
+                            row_num = int(''.join([c for c in start_cell.upper() if c.isdigit()])
+                            
+                            temp_configs[table_name] = {
+                                'table_name': table_name,
+                                'display_name': st.session_state.db.get_display_name(table_name),
+                                'start_row': row_num,
+                                'start_col': col_letter,
+                                'sheet_name': sheet,
+                                'column_mappings': {},
+                                'apply_to_all_sheets': apply_all,
+                                'selected_sheets': selected_sheets
+                            }
+                            st.success(f"Configuration saved for {table_name}")
                 
-                # Get filters for this table
-                filters = self.filters.get(table, {})
-                batch_name = filters.get('batch')
-                start_time = filters.get('start_time')
-                end_time = filters.get('end_time')
-                
-                # Fetch data with filters - THIS RETURNS PURE VALUES ONLY
-                data = self.db.fetch_filtered_data(
-                    table_name=table,
-                    batch_name=batch_name,
-                    start_time=start_time,
-                    end_time=end_time,
-                    limit=limit if limit > 0 else None
-                )
-                
-                tables_data[table] = data
-                
-                if data['success']:
-                    filter_info = ""
-                    if batch_name:
-                        filter_info += f"Batch: {batch_name} "
-                    if start_time or end_time:
-                        filter_info += f"Time range: {start_time if start_time else 'Start'} to {end_time if end_time else 'End'}"
-                    
-                    self.log(f"[OK] {data['display_name']}: {data['row_count']} rows {filter_info}", 'success')
-                    
-                    # Show sample data in log - PURE VALUES ONLY
-                    if data['data'] and len(data['data']) > 0:
-                        sample_row = data['data'][0]
-                        sample_str = ", ".join([str(v) for v in sample_row[:3]])
-                        if len(sample_row) > 3:
-                            sample_str += "..."
-                        self.log(f"   Sample data (PURE VALUES): {sample_str}", 'info')
                 else:
-                    self.log(f"[ERROR] {data['display_name']}: {data.get('error', 'Unknown error')}", 'error')
+                    st.write("**Header/Static Data Table**")
+                    st.info("For header tables, map individual columns to specific cells")
                     
-            except Exception as e:
-                tables_data[table] = {'success': False, 'error': str(e)}
-                self.log(f"[ERROR] {table}: {str(e)}", 'error')
-                logger.error(f"Error fetching {table}: {str(e)}")
+                    # Get columns for this table
+                    try:
+                        columns = st.session_state.db.get_table_columns(table_name)
+                        
+                        st.write(f"Columns in {table_name}:")
+                        column_mappings = {}
+                        
+                        for col in columns:
+                            col1, col2, col3 = st.columns([2, 2, 1])
+                            
+                            with col1:
+                                sheet = st.selectbox(
+                                    f"Sheet for {col}",
+                                    st.session_state.template_sheets,
+                                    key=f"sheet_{table_name}_{col}"
+                                )
+                            
+                            with col2:
+                                cell = st.text_input(
+                                    f"Cell for {col}",
+                                    value="",
+                                    key=f"cell_{table_name}_{col}",
+                                    placeholder="e.g., B4, C4"
+                                )
+                            
+                            with col3:
+                                apply_type = st.selectbox(
+                                    f"Apply to",
+                                    ["This Sheet", "All Sheets"],
+                                    key=f"apply_{table_name}_{col}"
+                                )
+                            
+                            if cell:
+                                column_mappings[col] = {
+                                    'table_name': table_name,
+                                    'column_name': col,
+                                    'template_sheet': sheet,
+                                    'template_cell': cell.upper(),
+                                    'apply_to_all_sheets': apply_type == "All Sheets",
+                                    'selected_sheets': [sheet] if apply_type == "This Sheet" else st.session_state.template_sheets
+                                }
+                        
+                        # Save button for column mappings
+                        if st.button(f"Save column mappings for {table_name}", key=f"save_header_{table_name}"):
+                            valid = True
+                            
+                            for col, mapping in column_mappings.items():
+                                cell_val = mapping['template_cell']
+                                if not re.match(r'^[A-Z]+\d+$', cell_val):
+                                    st.error(f"Invalid cell format for {col}: {cell_val}")
+                                    valid = False
+                                    break
+                            
+                            if valid:
+                                temp_configs[table_name] = {
+                                    'table_name': table_name,
+                                    'display_name': st.session_state.db.get_display_name(table_name),
+                                    'start_row': 0,
+                                    'start_col': '',
+                                    'sheet_name': '',
+                                    'column_mappings': column_mappings,
+                                    'apply_to_all_sheets': False,
+                                    'selected_sheets': []
+                                }
+                                st.success(f"Column mappings saved for {table_name}")
+                    
+                    except Exception as e:
+                        st.error(f"Error getting columns: {e}")
         
-        return tables_data
+        # Save all configurations
+        if temp_configs and st.button("💾 Save All Configurations", type="primary"):
+            st.session_state.table_configs.update(temp_configs)
+            st.success(f"Saved configurations for {len(temp_configs)} tables")
     
-    def export_new_excel(self):
-        """Export selected tables to new Excel file"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
-            return
-        
-        # Ask for save location
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"TableExport_{timestamp}.xlsx"
-        
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            initialfile=filename,
-            title="Save Excel File"
-        )
-        
-        if not file_path:
-            return
-        
-        def export():
-            self.status_bar.config(text="Exporting...")
-            self.log("Starting export...", 'info')
+    # Show current configurations
+    st.subheader("Current Configurations")
+    if st.session_state.table_configs:
+        for table_name, config in st.session_state.table_configs.items():
+            with st.expander(f"{config['display_name']}", expanded=False):
+                if config['start_row'] > 0:
+                    st.write(f"**Type:** Data Table")
+                    st.write(f"**Start Position:** {config['start_col']}{config['start_row']}")
+                    if config.get('selected_sheets'):
+                        sheets = config['selected_sheets']
+                        if len(sheets) > 3:
+                            st.write(f"**Sheets:** {', '.join(sheets[:3])} (+{len(sheets)-3} more)")
+                        else:
+                            st.write(f"**Sheets:** {', '.join(sheets)}")
+                else:
+                    st.write(f"**Type:** Header Table")
+                    st.write(f"**Column Mappings:** {len(config['column_mappings'])}")
+                    for col_name, mapping in config['column_mappings'].items():
+                        st.write(f"  • {col_name} → {mapping['template_cell']}")
+    else:
+        st.info("No configurations saved yet")
+    
+    # Navigation buttons
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("← Previous: Table Selection", use_container_width=True):
+            st.session_state.current_step = 2
+            st.rerun()
+    
+    with col3:
+        if st.button("Next: Filters →", type="primary", use_container_width=True):
+            if not st.session_state.table_configs:
+                st.warning("Please configure position mappings first")
+            else:
+                st.session_state.current_step = 4
+                st.rerun()
+
+def show_filters_tab():
+    """Show filters tab"""
+    st.header("Step 4: Data Filters")
+    
+    if not st.session_state.selected_tables:
+        st.warning("Please select tables first")
+        if st.button("← Go to Table Selection"):
+            st.session_state.current_step = 2
+            st.rerun()
+        return
+    
+    for table_name in st.session_state.selected_tables:
+        with st.expander(f"Filters for {table_name}", expanded=False):
+            # Get batches for this table
+            batches = st.session_state.db.get_batches_from_table(table_name)
             
-            try:
-                # Get row limit
-                try:
-                    row_limit = int(self.row_limit_var.get())
-                except:
-                    row_limit = 0
+            if batches:
+                batch = st.selectbox(
+                    f"Select batch for {table_name}",
+                    batches,
+                    key=f"batch_{table_name}"
+                )
+            else:
+                st.info("No batch column found in this table")
+                batch = None
+            
+            # Time range
+            enable_time = st.checkbox(f"Enable time filtering for {table_name}", 
+                                    key=f"enable_time_{table_name}")
+            
+            if enable_time:
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input(
+                        f"Start date for {table_name}",
+                        value=datetime.now() - timedelta(days=1),
+                        key=f"start_date_{table_name}"
+                    )
+                    start_time = st.time_input(
+                        f"Start time for {table_name}",
+                        value=datetime.now().time(),
+                        key=f"start_time_{table_name}"
+                    )
                 
-                # Fetch data with filters - NOW PURE VALUES ONLY
-                tables_data = self.fetch_filtered_table_data(row_limit)
+                with col2:
+                    end_date = st.date_input(
+                        f"End date for {table_name}",
+                        value=datetime.now(),
+                        key=f"end_date_{table_name}"
+                    )
+                    end_time = st.time_input(
+                        f"End time for {table_name}",
+                        value=datetime.now().time(),
+                        key=f"end_time_{table_name}"
+                    )
                 
-                # Note: New Excel export needs column names, but we don't have them
-                # For now, we'll skip new Excel export or implement differently
-                messagebox.showinfo("Info", "New Excel export requires column names. Use template export instead.")
-                self.status_bar.config(text="Ready")
-                
-            except Exception as e:
-                error_msg = str(e)
-                self.status_bar.config(text=f"Export failed: {error_msg}")
-                self.log(f"[ERROR] Export failed: {error_msg}", 'error')
-                self.root.after(0, lambda: messagebox.showerror("Export Error", f"Failed to export:\n{error_msg}"))
-        
-        threading.Thread(target=export, daemon=True).start()
+                start_datetime = datetime.combine(start_date, start_time)
+                end_datetime = datetime.combine(end_date, end_time)
+            else:
+                start_datetime = None
+                end_datetime = None
+            
+            # Save filters
+            if st.button(f"Save filters for {table_name}", key=f"save_filters_{table_name}"):
+                st.session_state.filters[table_name] = {
+                    'batch': batch,
+                    'start_time': start_datetime,
+                    'end_time': end_datetime
+                }
+                st.success(f"Filters saved for {table_name}")
     
-    def export_to_template(self):
-        """Export selected tables to template using position mappings"""
-        if not self.selected_tables:
-            messagebox.showwarning("No Selection", "Please select tables first")
-            return
-        
-        if not self.template_path:
-            messagebox.showwarning("No Template", "Please select a template first")
-            return
-        
-        if not self.table_configs:
-            if not messagebox.askyesno("No Mappings", 
-                                      "No position mappings configured. Export anyway?"):
-                return
-        
-        # Get merge rules
-        try:
-            merge_text = self.merge_rules_text.get("1.0", tk.END).strip()
-            merge_rules = [line.strip() for line in merge_text.splitlines() if line.strip()]
-            self.log(f"Using {len(merge_rules)} merge rules", 'info')
-        except:
-            merge_rules = []
-        
-        # Ask for save location
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"TemplateExport_{timestamp}.xlsx"
-        
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            initialfile=filename,
-            title="Save Excel File"
+    # Show current filters
+    st.subheader("Current Filters")
+    if st.session_state.filters:
+        for table_name, filters in st.session_state.filters.items():
+            st.write(f"**{table_name}:**")
+            if filters['batch']:
+                st.write(f"  • Batch: {filters['batch']}")
+            if filters['start_time'] and filters['end_time']:
+                st.write(f"  • Time: {filters['start_time']} to {filters['end_time']}")
+    else:
+        st.info("No filters configured")
+    
+    # Navigation buttons
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("← Previous: Position Mapping", use_container_width=True):
+            st.session_state.current_step = 3
+            st.rerun()
+    
+    with col3:
+        if st.button("Next: Export →", type="primary", use_container_width=True):
+            st.session_state.current_step = 5
+            st.rerun()
+
+def show_export_tab():
+    """Show export tab"""
+    st.header("Step 5: Export Data")
+    
+    if not st.session_state.selected_tables:
+        st.warning("Please select tables first")
+        if st.button("← Go to Table Selection"):
+            st.session_state.current_step = 2
+            st.rerun()
+        return
+    
+    if not st.session_state.template_path:
+        st.warning("Please upload a template first")
+        if st.button("← Go to Position Mapping"):
+            st.session_state.current_step = 3
+            st.rerun()
+        return
+    
+    # Export options
+    st.subheader("Export Settings")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        row_limit = st.number_input(
+            "Row limit (0 = all)",
+            min_value=0,
+            value=0,
+            help="Limit the number of rows fetched from each table"
         )
-        
-        if not file_path:
-            return
-        
-        def export():
+    
+    with col2:
+        default_filename = f"TemplateExport_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        filename = st.text_input(
+            "Output filename",
+            value=default_filename
+        )
+    
+    # Get merge rules from previous step
+    merge_rules_text = ""  # This would come from a session state
+    
+    # Export button
+    if st.button("🚀 Export to Template", type="primary", use_container_width=True):
+        with st.spinner("Exporting data..."):
             try:
-                self.status_bar.config(text="Exporting to template...")
-                self.log("="*60, 'info')
-                self.log("[START] STARTING TEMPLATE EXPORT", 'info')
-                self.log("="*60, 'info')
+                # Prepare merge rules
+                merge_rules = [line.strip() for line in merge_rules_text.splitlines() if line.strip()]
                 
-                # Get row limit
-                try:
-                    row_limit = int(self.row_limit_var.get())
-                    self.log(f"Row limit: {row_limit if row_limit > 0 else 'All'}", 'info')
-                except:
-                    row_limit = 0
-                    self.log("Row limit: All (default)", 'info')
+                # Fetch data
+                tables_data = {}
+                for table_name in st.session_state.selected_tables:
+                    filters = st.session_state.filters.get(table_name, {})
+                    
+                    data = st.session_state.db.fetch_filtered_data(
+                        table_name=table_name,
+                        batch_name=filters.get('batch'),
+                        start_time=filters.get('start_time'),
+                        end_time=filters.get('end_time'),
+                        limit=row_limit if row_limit > 0 else None
+                    )
+                    
+                    tables_data[table_name] = data
                 
-                # Fetch data with filters and detailed logging
-                self.log("[FETCH] FETCHING FILTERED DATA FROM DATABASE...", 'info')
-                tables_data = self.fetch_filtered_table_data(row_limit)
+                # Create temporary output file
+                temp_dir = tempfile.gettempdir()
+                output_path = os.path.join(temp_dir, filename)
                 
-                # Check if we got any data
-                tables_with_data = [t for t, d in tables_data.items() if d.get('success') and d.get('row_count', 0) > 0]
-                if not tables_with_data:
-                    self.log("[WARNING] No data found for any table!", 'warning')
-                    self.root.after(0, lambda: messagebox.showwarning("No Data", "No data found to export. Check database connection and table selections."))
-                    return
-                
-                self.log(f"[OK] Data fetched for {len(tables_with_data)}/{len(tables_data)} tables", 'success')
-                
-                # Export to template with merge rules
-                self.log("[EXPORT] EXPORTING TO TEMPLATE...", 'info')
-                
-                success = self.exporter.export_tables_to_template(
+                # Export to template
+                exporter = ExcelTableExporter()
+                success = exporter.export_tables_to_template(
                     tables_data=tables_data,
-                    template_path=self.template_path,
-                    table_configs=self.table_configs,
-                    output_path=file_path,
+                    template_path=st.session_state.template_path,
+                    table_configs=st.session_state.table_configs,
+                    output_path=output_path,
                     merge_rules=merge_rules
                 )
                 
                 if success:
-                    self.status_bar.config(text="Export completed")
-                    self.log("="*60, 'success')
-                    self.log("[OK] TEMPLATE EXPORT COMPLETED SUCCESSFULLY!", 'success')
-                    self.log("="*60, 'success')
-                    self.log(f"[FILE] File saved as: {file_path}", 'success')
+                    st.success("✅ Export completed successfully!")
                     
-                    # Show success message
-                    self.root.after(0, lambda: self.show_export_success(file_path))
-                else:
-                    self.status_bar.config(text="Export failed")
-                    self.log("[ERROR] Template export failed", 'error')
+                    # Provide download link
+                    with open(output_path, "rb") as f:
+                        bytes_data = f.read()
+                        b64 = base64.b64encode(bytes_data).decode()
+                        href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="{filename}">📥 Download Excel File</a>'
+                        st.markdown(href, unsafe_allow_html=True)
                     
-            except Exception as e:
-                error_msg = str(e)
-                self.status_bar.config(text=f"Export failed: {error_msg}")
-                self.log("="*60, 'error')
-                self.log("[ERROR] TEMPLATE EXPORT FAILED!", 'error')
-                self.log("="*60, 'error')
-                self.log(f"Error: {error_msg}", 'error')
-                self.log(traceback.format_exc(), 'error')
+                    # Show summary
+                    st.subheader("Export Summary")
+                    total_rows = sum(t.get('row_count', 0) for t in tables_data.values() if t.get('success', False))
+                    st.write(f"• Tables exported: {len([t for t in tables_data.values() if t.get('success', False)])}")
+                    st.write(f"• Total rows: {total_rows}")
+                    st.write(f"• Output file: {filename}")
                 
-                self.root.after(0, lambda: messagebox.showerror("Export Error", 
-                    f"Failed to export template:\n{error_msg}\n\n"
-                    "Check the log for details and try the following:\n"
-                    "1. Close the template file in Excel if it's open\n"
-                    "2. Verify database connection\n"
-                    "3. Check position mappings are valid\n"
-                    "4. Ensure template file is not read-only"))
-        
-        # Run export in separate thread
-        export_thread = threading.Thread(target=export, daemon=True)
-        export_thread.start()
+            except Exception as e:
+                st.error(f"❌ Export failed: {str(e)}")
+                st.exception(e)
     
-    def show_export_success(self, file_path: str):
-        """Show export success dialog"""
-        file_name = os.path.basename(file_path)
-        
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Export Successful")
-        dialog.geometry("400x250")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        
-        # Center dialog
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() - dialog.winfo_width()) // 2
-        y = (dialog.winfo_screenheight() - dialog.winfo_height()) // 2
-        dialog.geometry(f"+{x}+{y}")
-        
-        # Success message
-        ttk.Label(dialog, text="✓", font=('Arial', 32), foreground='green').pack(pady=(20, 10))
-        ttk.Label(dialog, text="Excel File Created Successfully!", font=('Arial', 12, 'bold')).pack()
-        
-        # File info
-        file_size = os.path.getsize(file_path) / 1024  # KB
-        ttk.Label(dialog, text=f"File: {file_name}").pack(pady=5)
-        ttk.Label(dialog, text=f"Size: {file_size:.1f} KB").pack(pady=5)
-        
-        # Buttons
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=20)
-        
-        ttk.Button(btn_frame, text="Open File", 
-                  command=lambda: [os.startfile(file_path), dialog.destroy()],
-                  width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Open Folder", 
-                  command=lambda: [os.startfile(os.path.dirname(file_path)), dialog.destroy()],
-                  width=12).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="OK", 
-                  command=dialog.destroy, width=8).pack(side=tk.RIGHT, padx=5)
-    
-    def log(self, message: str, tag: str = 'info'):
-        """Add message to log"""
-        timestamp = datetime.now().strftime('%H:%M:%S')
-        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n", tag)
-        self.log_text.see(tk.END)
-    
-    def on_closing(self):
-        """Handle window closing"""
-        if messagebox.askokcancel("Quit", "Do you want to quit the application?"):
-            if self.db.connected:
-                self.db.disconnect()
-            self.root.destroy()
+    # Navigation buttons
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("← Previous: Filters", use_container_width=True):
+            st.session_state.current_step = 4
+            st.rerun()
 
 # ============================================================================
-# MAIN ENTRY POINT
+# RUN THE APP
 # ============================================================================
-
-def main():
-    """Main function to run the application"""
-    root = tk.Tk()
-    
-    # Create application
-    app = MultiTableExporterApp(root)
-    
-    # Center window on screen
-    root.update_idletasks()
-    width = root.winfo_width()
-    height = root.winfo_height()
-    x = (root.winfo_screenwidth() // 2) - (width // 2)
-    y = (root.winfo_screenheight() // 2) - (height // 2)
-    root.geometry(f'{width}x{height}+{x}+{y}')
-    
-    # Start main loop
-    root.mainloop()
 
 if __name__ == "__main__":
     main()

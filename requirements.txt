@@ -1,11 +1,4 @@
-pyodbc>=4.0.35
-openpyxl>=3.0.10
-pyodbc>=4.0.35
-openpyxl>=3.0.10
-pandas>=1.5.0
-openpyxl>=3.0.10
-tkcalendar>=1.6.1
-numpy>=1.21.0
-Pillow>=8.3.0
-pyodbc>=4.0.35
-openpyxl>=3.0.10
+streamlit==1.28.0
+pyodbc==5.0.1
+pandas==1.5.3
+openpyxl==3.1.2
