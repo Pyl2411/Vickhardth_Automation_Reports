@@ -593,3 +593,124 @@ AttributeError: 'MergedCell' object attribute 'value' is read-only
 2026-02-07 10:24:13,251 - INFO - ============================================================
 2026-02-07 10:24:13,251 - INFO - [OK] TEMPLATE EXPORT COMPLETED SUCCESSFULLY
 2026-02-07 10:24:13,252 - INFO - ============================================================
+2026-02-07 11:33:04,232 - INFO - Connecting to MAHESHWAGH\WINCC.VPI1 with Windows Authentication
+2026-02-07 11:33:04,232 - INFO - Trying connection method: pyodbc
+2026-02-07 11:33:04,423 - INFO - ✅ Connection successful using pyodbc
+2026-02-07 11:33:04,428 - INFO - Found 4 tables
+2026-02-07 11:33:48,494 - INFO - Found 22 columns in BATCH_DATA
+2026-02-07 11:33:48,495 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 11:33:55,111 - INFO - Found 22 columns in BATCH_DATA
+2026-02-07 11:33:55,112 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 11:33:56,916 - INFO - [FETCH] Fetching filtered data from table: BATCH_DATA
+2026-02-07 11:33:56,917 - INFO - Found 22 columns in BATCH_DATA
+2026-02-07 11:33:56,918 - INFO - Found 22 columns in BATCH_DATA
+2026-02-07 11:33:56,919 - INFO - Found 1 time columns in BATCH_DATA
+2026-02-07 11:33:56,943 - INFO - [OK] Fetched 45 filtered rows from BATCH_DATA (VALUES ONLY, NO COLUMN NAMES)
+2026-02-07 11:33:56,948 - INFO - ============================================================
+2026-02-07 11:33:56,948 - INFO - [START] STARTING TEMPLATE EXPORT
+2026-02-07 11:33:56,948 - INFO - ============================================================
+2026-02-07 11:33:56,948 - INFO - Template: C:\Users\waghm\AppData\Local\Temp\5_6327753515942812073.xlsx
+2026-02-07 11:33:56,949 - INFO - Output: C:\Users\waghm\AppData\Local\Temp\export_20260207_113356.xlsx
+2026-02-07 11:33:56,949 - INFO - Tables to export: ['BATCH_DATA']
+2026-02-07 11:33:56,950 - INFO - Total rows to export: 45
+2026-02-07 11:33:56,950 - INFO - [COPY] Copying template...
+2026-02-07 11:33:56,953 - INFO - [LOAD] Loading template workbook...
+2026-02-07 11:33:57,050 - INFO - [SHEETS] Workbook sheets: ['Sheet1', 'Sheet2', 'Shee3']
+2026-02-07 11:33:57,050 - INFO - ----------------------------------------
+2026-02-07 11:33:57,050 - INFO - [PROCESS] Processing table: BATCH_DATA
+2026-02-07 11:33:57,050 - INFO - Table type: TABULAR
+2026-02-07 11:33:57,051 - INFO - Data: 45 rows (VALUES ONLY)
+2026-02-07 11:33:57,051 - INFO - Writing tabular data starting at B24
+2026-02-07 11:33:57,051 - INFO - Writing to 3 sheets
+2026-02-07 11:33:57,052 - INFO - Writing to sheet 'Sheet1' starting at row 24, column B
+2026-02-07 11:33:57,052 - INFO - Writing 45 data rows
+2026-02-07 11:33:57,059 - INFO - Writing to sheet 'Sheet2' starting at row 24, column B
+2026-02-07 11:33:57,059 - INFO - Writing 45 data rows
+2026-02-07 11:33:57,067 - INFO - Writing to sheet 'Shee3' starting at row 24, column B
+2026-02-07 11:33:57,067 - INFO - Writing 45 data rows
+2026-02-07 11:33:57,074 - INFO - [SAVE] Saving workbook...
+2026-02-07 11:33:57,130 - INFO - ============================================================
+2026-02-07 11:33:57,130 - INFO - [OK] TEMPLATE EXPORT COMPLETED SUCCESSFULLY
+2026-02-07 11:33:57,131 - INFO - ============================================================
+2026-02-07 11:59:56,688 - INFO - Connecting to MAHESHWAGH\WINCC.VPI1 with Windows Authentication
+2026-02-07 11:59:56,689 - INFO - Trying connection method: pyodbc
+2026-02-07 11:59:56,775 - INFO - ✅ Connection successful using pyodbc
+2026-02-07 11:59:56,781 - INFO - Found 4 tables
+2026-02-07 12:01:13,602 - INFO - Found 22 columns in BATCH_DATA
+2026-02-07 12:01:13,604 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:01:19,841 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:01:23,274 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:01:26,916 - INFO - [FETCH] Fetching filtered data from table: BATCH_DATA
+2026-02-07 12:01:26,917 - INFO - Found 1 time columns in BATCH_DATA
+2026-02-07 12:01:26,932 - INFO - [OK] Fetched 45 filtered rows from BATCH_DATA
+2026-02-07 12:01:26,934 - INFO - ============================================================
+2026-02-07 12:01:26,934 - INFO - [START] STARTING TEMPLATE EXPORT
+2026-02-07 12:01:26,935 - INFO - ============================================================
+2026-02-07 12:01:26,935 - INFO - Template: C:\Users\waghm\AppData\Local\Temp\5_6327753515942812073.xlsx
+2026-02-07 12:01:26,935 - INFO - Output: C:\Users\waghm\AppData\Local\Temp\export_20260207_120126.xlsx
+2026-02-07 12:01:26,935 - INFO - Tables to export: ['BATCH_DATA']
+2026-02-07 12:01:26,935 - INFO - Total rows to export: 45
+2026-02-07 12:01:26,936 - INFO - [COPY] Copying template...
+2026-02-07 12:01:26,938 - INFO - [LOAD] Loading template workbook...
+2026-02-07 12:01:27,012 - INFO - [SHEETS] Workbook sheets: ['Sheet1', 'Sheet2', 'Shee3']
+2026-02-07 12:01:27,012 - INFO - ----------------------------------------
+2026-02-07 12:01:27,012 - INFO - [PROCESS] Processing table: BATCH_DATA
+2026-02-07 12:01:27,013 - INFO - Table type: TABULAR
+2026-02-07 12:01:27,013 - INFO - Data: 45 rows
+2026-02-07 12:01:27,013 - INFO - Writing tabular data starting at A24
+2026-02-07 12:01:27,013 - INFO - Writing to 1 sheets
+2026-02-07 12:01:27,014 - INFO - Writing to sheet 'Sheet1' starting at row 24, column A
+2026-02-07 12:01:27,014 - INFO - Writing 45 data rows
+2026-02-07 12:01:27,021 - INFO - [SAVE] Saving workbook...
+2026-02-07 12:01:27,053 - INFO - ============================================================
+2026-02-07 12:01:27,054 - INFO - [OK] TEMPLATE EXPORT COMPLETED SUCCESSFULLY
+2026-02-07 12:01:27,054 - INFO - ============================================================
+2026-02-07 12:20:12,647 - INFO - Connecting to MAHESHWAGH\WINCC.VPI1 with Windows Authentication
+2026-02-07 12:20:12,647 - INFO - Trying connection method: pyodbc
+2026-02-07 12:20:12,728 - INFO - ✅ Connection successful using pyodbc
+2026-02-07 12:20:12,733 - INFO - Found 4 tables
+2026-02-07 12:20:44,753 - INFO - Found 22 columns in BATCH_DATA
+2026-02-07 12:20:44,754 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:49,041 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:49,123 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:53,233 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:53,321 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:55,594 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:55,682 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,059 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,140 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,253 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,332 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,435 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,509 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,662 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:20:56,738 - INFO - Retrieved 1 batches from BATCH_DATA
+2026-02-07 12:21:02,356 - INFO - [FETCH] Fetching filtered data from table: BATCH_DATA
+2026-02-07 12:21:02,357 - INFO - Found 1 time columns in BATCH_DATA
+2026-02-07 12:21:02,370 - INFO - [OK] Fetched 45 filtered rows from BATCH_DATA
+2026-02-07 12:21:02,372 - INFO - ============================================================
+2026-02-07 12:21:02,373 - INFO - [START] STARTING TEMPLATE EXPORT
+2026-02-07 12:21:02,373 - INFO - ============================================================
+2026-02-07 12:21:02,373 - INFO - Template: C:\Users\waghm\AppData\Local\Temp\5_6327753515942812073.xlsx
+2026-02-07 12:21:02,374 - INFO - Output: C:\Users\waghm\AppData\Local\Temp\export_20260207_122102.xlsx
+2026-02-07 12:21:02,374 - INFO - Tables to export: ['BATCH_DATA']
+2026-02-07 12:21:02,374 - INFO - Total rows to export: 45
+2026-02-07 12:21:02,374 - INFO - [COPY] Copying template...
+2026-02-07 12:21:02,376 - INFO - [LOAD] Loading template workbook...
+2026-02-07 12:21:02,445 - INFO - [SHEETS] Workbook sheets: ['Sheet1', 'Sheet2', 'Shee3']
+2026-02-07 12:21:02,445 - INFO - ----------------------------------------
+2026-02-07 12:21:02,445 - INFO - [PROCESS] Processing table: BATCH_DATA
+2026-02-07 12:21:02,446 - INFO - Table type: TABULAR
+2026-02-07 12:21:02,446 - INFO - Data: 45 rows
+2026-02-07 12:21:02,446 - INFO - Writing tabular data starting at A24
+2026-02-07 12:21:02,446 - INFO - Writing to 3 sheets
+2026-02-07 12:21:02,447 - INFO - Writing to sheet 'Sheet1' starting at row 24, column A
+2026-02-07 12:21:02,447 - INFO - Writing 45 data rows
+2026-02-07 12:21:02,461 - INFO - Writing to sheet 'Sheet2' starting at row 24, column A
+2026-02-07 12:21:02,461 - INFO - Writing 45 data rows
+2026-02-07 12:21:02,472 - INFO - Writing to sheet 'Shee3' starting at row 24, column A
+2026-02-07 12:21:02,472 - INFO - Writing 45 data rows
+2026-02-07 12:21:02,481 - INFO - [SAVE] Saving workbook...
+2026-02-07 12:21:02,531 - INFO - ============================================================
+2026-02-07 12:21:02,531 - INFO - [OK] TEMPLATE EXPORT COMPLETED SUCCESSFULLY
+2026-02-07 12:21:02,531 - INFO - ============================================================
