@@ -1,6 +1,6 @@
 """
 Excel Table Exporter - Complete Streamlit Application
-Version: 3.6.0 - Streamlit Cloud Compatible
+Version: 4.0.0 - Production Ready
 Description: Export SQL Server tables to Excel templates with position mapping
 With advanced filtering and multi-sheet support
 """
@@ -34,9 +34,17 @@ try:
     from sqlalchemy import create_engine, text, inspect
     from sqlalchemy.exc import SQLAlchemyError
     SQLALCHEMY_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     SQLALCHEMY_AVAILABLE = False
-    st.error("SQLAlchemy not available. Please install it.")
+    st.error(f"SQLAlchemy not available: {e}. Please install it.")
+
+# Try to import pyodbc with fallback
+try:
+    import pyodbc
+    PYODBC_AVAILABLE = True
+except ImportError as e:
+    PYODBC_AVAILABLE = False
+    st.warning(f"pyodbc not available: {e}. Using SQLAlchemy with connection strings.")
 
 # ============================================================================
 # LOGGING SETUP (Streamlit Cloud Compatible)
@@ -44,7 +52,7 @@ except ImportError:
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]  # Removed FileHandler for Streamlit Cloud
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
 
@@ -75,11 +83,11 @@ class TableConfig:
     selected_sheets: List[str] = field(default_factory=list)
 
 # ============================================================================
-# DATABASE MANAGER (Optimized Version)
+# DATABASE MANAGER (pyodbc with fallback)
 # ============================================================================
 
 class DatabaseManager:
-    """Manages database connections using SQLAlchemy with Windows Authentication"""
+    """Manages database connections using pyodbc with Windows Authentication"""
     
     def __init__(self):
         self.engine = None
@@ -87,99 +95,102 @@ class DatabaseManager:
         self.server = None
         self.database = None
         self.driver = None
-        self.table_cache = {}  # Cache for table metadata
-        self.column_cache = {}  # Cache for column information
+        self.table_cache = {}
+        self.column_cache = {}
     
-    def connect(self, server: str, database: str, driver: str = "auto") -> Tuple[bool, str]:
-        """Connect to SQL Server with Windows Authentication only"""
+    def connect(self, server: str, database: str) -> Tuple[bool, str]:
+        """Connect to SQL Server with optimized pyodbc connection"""
         if not SQLALCHEMY_AVAILABLE:
             return False, "SQLAlchemy not available"
         
         try:
-            logger.info(f"Connecting to {server}.{database} with Windows Authentication")
+            logger.info(f"Connecting to {server}.{database}")
             
-            # Clear caches on new connection
+            # Clear caches
             self.table_cache.clear()
             self.column_cache.clear()
             
-            # Connection methods in order of preference
+            # Try different connection methods in order
             connection_methods = []
             
-            # Method 1: pyodbc with ODBC Driver 17 (most reliable)
+            # Method 1: ODBC Driver 17 for SQL Server (most reliable)
             connection_methods.append({
-                'name': 'pyodbc',
+                'name': 'ODBC Driver 17 for SQL Server',
                 'string': f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;TrustServerCertificate=yes;",
-                'engine_string': "mssql+pyodbc:///?odbc_connect={}",
-                'params': {
-                    'fast_executemany': True,
-                    'pool_pre_ping': True,
-                    'pool_recycle': 3600
-                }
+                'requires_pyodbc': True
             })
             
-            # Method 2: pymssql
+            # Method 2: SQL Server Native Client 11.0
             connection_methods.append({
-                'name': 'pymssql',
-                'string': f"mssql+pymssql://{server}/{database}",
-                'engine_string': None,
-                'params': {
-                    'pool_pre_ping': True,
-                    'pool_recycle': 3600
-                }
-            })
-            
-            # Method 3: SQL Server Native Client
-            connection_methods.append({
-                'name': 'sql_server_native',
+                'name': 'SQL Server Native Client 11.0',
                 'string': f"DRIVER={{SQL Server Native Client 11.0}};SERVER={server};DATABASE={database};Trusted_Connection=yes;",
-                'engine_string': "mssql+pyodbc:///?odbc_connect={}",
-                'params': {
-                    'pool_pre_ping': True,
-                    'pool_recycle': 3600
-                }
+                'requires_pyodbc': True
             })
+            
+            # Method 3: SQL Server (older)
+            connection_methods.append({
+                'name': 'SQL Server',
+                'string': f"DRIVER={{SQL Server}};SERVER={server};DATABASE={database};Trusted_Connection=yes;",
+                'requires_pyodbc': True
+            })
+            
+            # Method 4: pymssql fallback (if pyodbc fails)
+            if not PYODBC_AVAILABLE:
+                connection_methods.append({
+                    'name': 'pymssql',
+                    'string': f"mssql+pymssql://{server}/{database}?charset=utf8",
+                    'requires_pyodbc': False
+                })
             
             # Try each method
             for method in connection_methods:
                 try:
-                    logger.info(f"Trying connection method: {method['name']}")
+                    logger.info(f"Trying: {method['name']}")
                     
-                    if method['name'] == 'pyodbc':
-                        connection_string = method['string']
-                        # URL encode the connection string
-                        params = urllib.parse.quote_plus(connection_string)
+                    if method['requires_pyodbc'] and not PYODBC_AVAILABLE:
+                        continue
+                    
+                    if method['requires_pyodbc']:
+                        # Use pyodbc connection string
+                        params = urllib.parse.quote_plus(method['string'])
                         engine_string = f"mssql+pyodbc:///?odbc_connect={params}"
-                        self.engine = create_engine(
-                            engine_string,
-                            **method['params']
-                        )
                     else:
-                        self.engine = create_engine(
-                            method['string'],
-                            **method['params']
-                        )
+                        # Use direct SQLAlchemy URL
+                        engine_string = method['string']
+                    
+                    # Create engine with optimized settings
+                    self.engine = create_engine(
+                        engine_string,
+                        pool_pre_ping=True,
+                        pool_recycle=3600,
+                        echo=False,
+                        future=True
+                    )
                     
                     # Test connection with timeout
                     with self.engine.connect() as conn:
-                        conn.execute(text("SELECT 1")).fetchone()
+                        result = conn.execute(text("SELECT 1 AS test"))
+                        test_val = result.fetchone()[0]
+                        if test_val != 1:
+                            raise Exception("Test query failed")
                     
                     self.connected = True
                     self.server = server
                     self.database = database
                     self.driver = method['name']
                     
-                    logger.info(f"✅ Connection successful using {method['name']}")
-                    return True, f"Connection successful using {method['name']}"
+                    logger.info(f"✅ Connected using {method['name']}")
+                    return True, f"Connected using {method['name']}"
                     
                 except Exception as e:
-                    logger.warning(f"Connection method {method['name']} failed: {str(e)}")
+                    logger.warning(f"Method {method['name']} failed: {str(e)}")
                     continue
             
             return False, "All connection attempts failed. Please check:\n1. SQL Server is running\n2. Windows Authentication is enabled\n3. ODBC drivers are installed"
             
         except Exception as e:
             error_msg = f"Connection error: {str(e)}"
-            logger.error(error_msg)
+            logger.error(f"{error_msg}\n{traceback.format_exc()}")
             return False, error_msg
     
     def disconnect(self):
@@ -226,16 +237,16 @@ class DatabaseManager:
             logger.error(f"Error getting tables: {e}")
             return []
     
-    def get_table_columns(self, table_name: str, use_cache: bool = True) -> List[str]:
-        """Get column names for a table with caching"""
+    def get_table_columns(self, table_name: str) -> List[str]:
+        """Get column names for a table"""
         cache_key = f"{table_name}_columns"
         
-        if use_cache and cache_key in self.column_cache:
+        if cache_key in self.column_cache:
             return self.column_cache[cache_key]
         
         try:
             query = """
-            SELECT COLUMN_NAME, DATA_TYPE
+            SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS 
             WHERE TABLE_NAME = :table_name
             ORDER BY ORDINAL_POSITION
@@ -243,14 +254,11 @@ class DatabaseManager:
             
             with self.engine.connect() as conn:
                 result = conn.execute(text(query), {"table_name": table_name})
-                columns = [(row[0], row[1]) for row in result.fetchall()]
+                columns = [row[0] for row in result.fetchall()]
             
-            # Store both column names and data types
-            column_names = [col[0] for col in columns]
-            logger.info(f"Found {len(column_names)} columns in {table_name}")
-            
-            self.column_cache[cache_key] = column_names
-            return column_names
+            logger.info(f"Found {len(columns)} columns in {table_name}")
+            self.column_cache[cache_key] = columns
+            return columns
             
         except Exception as e:
             logger.error(f"Error getting columns: {e}")
@@ -262,90 +270,63 @@ class DatabaseManager:
             columns = self.get_table_columns(table_name)
             batch_column = None
             
-            # Look for common batch column names (case-insensitive)
+            # Look for batch column
             batch_keywords = ['BATCH', 'BATCH_NAME', 'BATCH_NUMBER', 'BATCH_NO', 'BATCHID', 'LOT', 'LOT_NO']
             for col in columns:
                 col_upper = col.upper()
-                if any(keyword == col_upper or keyword in col_upper for keyword in batch_keywords):
+                if any(keyword in col_upper for keyword in batch_keywords):
                     batch_column = col
                     break
             
             if not batch_column:
-                logger.warning(f"No batch column found in table {table_name}")
                 return []
             
-            # Get distinct batches
             query = f"SELECT DISTINCT [{batch_column}] FROM [{table_name}] WHERE [{batch_column}] IS NOT NULL ORDER BY [{batch_column}]"
             
             with self.engine.connect() as conn:
                 result = conn.execute(text(query))
                 batches = [str(row[0]) for row in result.fetchall()]
             
-            logger.info(f"Retrieved {len(batches)} batches from {table_name}")
             return batches
             
         except Exception as e:
-            logger.error(f"Error getting batches from {table_name}: {e}")
-            return []
-    
-    def get_time_columns(self, table_name: str) -> List[str]:
-        """Get time-related columns from a table"""
-        try:
-            columns = self.get_table_columns(table_name)
-            time_columns = []
-            
-            # Look for time-related columns
-            time_keywords = ['TIME', 'DATE', 'TIMESTAMP', 'DATETIME', 'CREATED', 'MODIFIED', 'START', 'STOP', 'END']
-            for col in columns:
-                col_upper = col.upper()
-                if any(keyword in col_upper for keyword in time_keywords):
-                    time_columns.append(col)
-            
-            logger.info(f"Found {len(time_columns)} time columns in {table_name}")
-            return time_columns
-            
-        except Exception as e:
-            logger.error(f"Error getting time columns from {table_name}: {e}")
+            logger.error(f"Error getting batches: {e}")
             return []
     
     def fetch_filtered_data(self, table_name: str, batch_name: str = None, 
                           start_time: datetime = None, end_time: datetime = None,
                           limit: int = None) -> Dict:
-        """Fetch data from a table with filters - Returns values only (no column names)"""
+        """Fetch data from a table with filters"""
         try:
-            logger.info(f"[FETCH] Fetching filtered data from table: {table_name}")
+            logger.info(f"Fetching data from {table_name}")
             
             display_name = self.get_display_name(table_name)
+            columns = self.get_table_columns(table_name)
             
-            # Get column names for this table
-            column_names = self.get_table_columns(table_name)
-            if not column_names:
+            if not columns:
                 return {
                     'success': False,
-                    'error': f"No columns found in table {table_name}",
+                    'error': f"No columns found in {table_name}",
                     'display_name': display_name,
                     'table_name': table_name,
                     'data': [],
                     'row_count': 0
                 }
             
-            # Build WHERE clause for filters
+            # Build WHERE clause
             where_clauses = []
             params = {}
             
-            # Add batch filter if specified
+            # Batch filter
             if batch_name:
-                batch_column = self._find_batch_column(column_names)
+                batch_column = self._find_batch_column(columns)
                 if batch_column:
                     where_clauses.append(f"[{batch_column}] = :batch_name")
                     params["batch_name"] = batch_name
-                    logger.info(f"Filtering by batch: {batch_name} in column {batch_column}")
-                else:
-                    logger.warning(f"No batch column found for filtering in {table_name}")
             
-            # Add time range filter if specified
+            # Time filter
             if start_time or end_time:
-                time_column = self._find_time_column(column_names)
+                time_column = self._find_time_column(columns)
                 if time_column:
                     if start_time:
                         where_clauses.append(f"[{time_column}] >= :start_time")
@@ -353,11 +334,8 @@ class DatabaseManager:
                     if end_time:
                         where_clauses.append(f"[{time_column}] <= :end_time")
                         params["end_time"] = end_time
-                    logger.info(f"Filtering by time range in column {time_column}")
-                else:
-                    logger.warning(f"No time column found for filtering in {table_name}")
             
-            # Build query - SELECT * to get all data
+            # Build query
             if limit and limit > 0:
                 query = f"SELECT TOP ({limit}) * FROM [{table_name}]"
             else:
@@ -366,68 +344,50 @@ class DatabaseManager:
             if where_clauses:
                 query += " WHERE " + " AND ".join(where_clauses)
             
-            # Add order by time if available
-            time_columns = self.get_time_columns(table_name)
-            if time_columns:
-                query += f" ORDER BY [{time_columns[0]}]"
-            
-            logger.debug(f"Executing query: {query}")
-            logger.debug(f"Parameters: {params}")
-            
             # Execute query
             with self.engine.connect() as conn:
                 df = pd.read_sql_query(text(query), conn, params=params)
             
-            # Convert to list of lists - VALUES ONLY (NO COLUMN NAMES)
+            # Convert to list of lists
             data = []
             for _, row in df.iterrows():
                 row_list = []
                 for value in row:
-                    # Handle different data types
                     if pd.isna(value):
                         row_list.append("")
                     elif isinstance(value, datetime):
-                        # Format datetime consistently
                         row_list.append(value.strftime('%Y-%m-%d %H:%M:%S'))
                     elif isinstance(value, timedelta):
-                        # Format timedelta as HH:MM:SS
                         total_seconds = int(value.total_seconds())
                         hours, remainder = divmod(total_seconds, 3600)
                         minutes, seconds = divmod(remainder, 60)
                         row_list.append(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
                     elif isinstance(value, (int, float)):
-                        # Keep numbers as is (Excel will format them)
                         row_list.append(value)
                     else:
-                        # Convert everything else to string
-                        row_list.append(str(value).strip() if value is not None else "")
+                        row_list.append(str(value).strip() if value else "")
                 data.append(row_list)
             
             row_count = len(data)
-            
-            if data:
-                logger.debug(f"First row sample: {data[0][:5] if len(data[0]) > 5 else data[0]}")
-            
-            logger.info(f"[OK] Fetched {row_count} filtered rows from {table_name}")
+            logger.info(f"Fetched {row_count} rows from {table_name}")
             
             return {
                 'success': True,
                 'display_name': display_name,
                 'table_name': table_name,
-                'data': data,  # Values only, no column names
+                'data': data,
                 'row_count': row_count,
                 'filters_applied': {
                     'batch': batch_name,
                     'start_time': start_time,
                     'end_time': end_time
                 },
-                'column_names': column_names  # Keep column names separate for debugging
+                'column_names': columns
             }
             
         except Exception as e:
-            error_msg = f"Error fetching filtered data from {table_name}: {str(e)}"
-            logger.error(f"[ERROR] {error_msg}")
-            logger.error(traceback.format_exc())
+            error_msg = f"Error fetching data: {str(e)}"
+            logger.error(f"{error_msg}\n{traceback.format_exc()}")
             return {
                 'success': False,
                 'error': error_msg,
@@ -438,17 +398,17 @@ class DatabaseManager:
             }
     
     def _find_batch_column(self, columns: List[str]) -> Optional[str]:
-        """Find batch column in list of column names"""
+        """Find batch column"""
         batch_keywords = ['BATCH', 'BATCH_NAME', 'BATCH_NUMBER', 'BATCH_NO', 'BATCHID', 'LOT', 'LOT_NO']
         for col in columns:
             col_upper = col.upper()
-            if any(keyword == col_upper or keyword in col_upper for keyword in batch_keywords):
+            if any(keyword in col_upper for keyword in batch_keywords):
                 return col
         return None
     
     def _find_time_column(self, columns: List[str]) -> Optional[str]:
-        """Find time column in list of column names"""
-        time_keywords = ['TIME', 'DATE', 'TIMESTAMP', 'DATETIME', 'CREATED_AT']
+        """Find time column"""
+        time_keywords = ['TIME', 'DATE', 'TIMESTAMP', 'DATETIME', 'CREATED']
         for col in columns:
             col_upper = col.upper()
             if any(keyword in col_upper for keyword in time_keywords):
@@ -457,31 +417,25 @@ class DatabaseManager:
     
     def get_display_name(self, table_name: str) -> str:
         """Convert table name to display name"""
-        # Replace underscores with spaces and title case
-        display_name = table_name.replace('_', ' ').title()
+        name = table_name.replace('_', ' ').title()
         
-        # Remove common prefixes
-        prefixes = ['Tbl', 'Table', 'Vw', 'View', 'Dim', 'Fact', 'Ref']
+        prefixes = ['Tbl', 'Table', 'Vw', 'View', 'Dim', 'Fact']
         for prefix in prefixes:
-            if display_name.startswith(prefix + ' '):
-                display_name = display_name[len(prefix):].strip()
-            elif display_name.startswith(prefix):
-                # Check if it's followed by a capital letter (not space)
-                if len(display_name) > len(prefix) and display_name[len(prefix)].isupper():
-                    display_name = display_name[len(prefix):].strip()
+            if name.startswith(prefix + ' '):
+                name = name[len(prefix):].strip()
         
-        return display_name if display_name else table_name
+        return name if name else table_name
 
 # ============================================================================
-# EXCEL EXPORTER WITH SHEET SELECTION SUPPORT
+# EXCEL EXPORTER
 # ============================================================================
 
 class ExcelTableExporter:
-    """Handles exporting tables to Excel with position mapping and merged cell support"""
+    """Handles exporting tables to Excel"""
     
     @staticmethod
     def export_tables_to_new_excel(tables_data: Dict, output_path: str) -> bool:
-        """Export multiple tables to new Excel file (no column names in data)"""
+        """Export to new Excel file"""
         try:
             wb = Workbook()
             
@@ -489,25 +443,22 @@ class ExcelTableExporter:
             if wb.sheetnames:
                 wb.remove(wb.active)
             
-            # Create a sheet for each table
             for table_name, table_data in tables_data.items():
                 if table_data.get('success', False):
-                    # Create sheet with valid name
                     sheet_name = ExcelTableExporter.get_valid_sheet_name(table_data['display_name'])
                     ws = wb.create_sheet(title=sheet_name)
                     
-                    # Write data directly (no headers since we don't have column names)
                     data = table_data['data']
-                    for row_idx, row_data in enumerate(data, 1):  # Start from row 1
+                    for row_idx, row_data in enumerate(data, 1):
                         for col_idx, value in enumerate(row_data, 1):
                             ws.cell(row=row_idx, column=col_idx, value=value)
             
             wb.save(output_path)
-            logger.info(f"✅ Excel file created: {output_path}")
+            logger.info(f"Created Excel: {output_path}")
             return True
             
         except Exception as e:
-            logger.error(f"Error creating Excel: {str(e)}")
+            logger.error(f"Error creating Excel: {e}")
             return False
     
     @staticmethod
@@ -515,42 +466,23 @@ class ExcelTableExporter:
                                 table_configs: Dict[str, TableConfig],
                                 output_path: str,
                                 merge_rules: List[str] = None) -> bool:
-        """
-        Export data into an existing template using position mappings.
-        Template structure is kept AS IS, only values are filled in.
-        """
+        """Export data into an existing template"""
         try:
-            logger.info("="*60)
-            logger.info("[START] STARTING TEMPLATE EXPORT")
-            logger.info("="*60)
-            logger.info(f"Template: {template_path}")
-            logger.info(f"Output: {output_path}")
-            logger.info(f"Tables to export: {list(tables_data.keys())}")
+            logger.info("Starting template export")
             
-            # Check if we have data
             total_rows = sum(t.get('row_count', 0) for t in tables_data.values() if t.get('success', False))
-            logger.info(f"Total rows to export: {total_rows}")
-            
             if total_rows == 0:
-                logger.warning("[WARNING] No data found to export!")
+                logger.warning("No data to export")
                 return False
             
-            # Make a copy of the template
-            logger.info("[COPY] Copying template...")
-            try:
-                shutil.copy2(template_path, output_path)
-            except Exception as e:
-                logger.error(f"Error copying template: {e}")
-                return False
+            # Copy template
+            shutil.copy2(template_path, output_path)
             
-            # Load the copied template
-            logger.info("[LOAD] Loading template workbook...")
+            # Load workbook
             wb = load_workbook(output_path)
-            logger.info(f"[SHEETS] Workbook sheets: {wb.sheetnames}")
             
-            # Apply user merge rules first (optional)
+            # Apply merge rules
             if merge_rules:
-                logger.info(f"Applying {len(merge_rules)} merge rules")
                 for rule in merge_rules:
                     try:
                         if "!" in rule:
@@ -559,144 +491,72 @@ class ExcelTableExporter:
                             cell_range = cell_range.strip()
                             if sheet_name in wb.sheetnames:
                                 ws = wb[sheet_name]
-                                if cell_range in ws.merged_cells.ranges:
-                                    logger.debug(f"Range {cell_range} already merged, skipping")
-                                else:
+                                if cell_range not in ws.merged_cells.ranges:
                                     ws.merge_cells(cell_range)
-                                    logger.info(f"[OK] Merged {sheet_name}!{cell_range}")
                     except Exception as e:
-                        logger.warning(f"Failed to apply merge rule '{rule}': {e}")
+                        logger.warning(f"Failed to apply merge rule: {e}")
             
             # Process each table
             for table_name, table_data in tables_data.items():
-                logger.info("-"*40)
-                logger.info(f"[PROCESS] Processing table: {table_name}")
-                
-                if not table_data.get('success', False):
-                    logger.warning(f"[ERROR] Table {table_name} has error: {table_data.get('error')}")
-                    continue
-                
-                if table_name not in table_configs:
-                    logger.warning(f"[WARNING] No configuration found for table: {table_name}")
+                if not table_data.get('success', False) or table_name not in table_configs:
                     continue
                 
                 table_config = table_configs[table_name]
-                logger.info(f"Table type: {'TABULAR' if table_config.start_row > 0 else 'HEADER'}")
-                logger.info(f"Data: {table_data.get('row_count', 0)} rows")
+                data = table_data['data']
                 
-                # Check if this is a header table with column mappings
-                if table_config.column_mappings and table_data['data']:
-                    logger.info(f"Processing {len(table_config.column_mappings)} column mappings for header table")
-                    
-                    # Get column names from the data (optional, for debugging)
+                # Handle header tables
+                if table_config.column_mappings and data:
+                    first_row = data[0] if data else []
                     column_names = table_data.get('column_names', [])
                     
-                    # For header tables, we only use the first row of data
-                    first_row = table_data['data'][0] if table_data['data'] else []
-                    
                     for column_name, cell_mapping in table_config.column_mappings.items():
-                        logger.debug(f"Mapping column: {column_name}")
-                        
-                        # Find which position this column is in the data
                         column_index = -1
                         if column_names:
-                            # Try to find by column name
                             try:
                                 column_index = column_names.index(column_name)
                             except ValueError:
-                                # Column name not found, try to find by position in mapping
-                                try:
-                                    col_list = list(table_config.column_mappings.keys())
-                                    column_index = col_list.index(column_name)
-                                except:
-                                    column_index = -1
-                        else:
-                            # No column names, use mapping order
-                            try:
-                                col_list = list(table_config.column_mappings.keys())
-                                column_index = col_list.index(column_name)
-                            except:
-                                column_index = -1
+                                pass
                         
-                        # Get value from first row
                         value = ""
                         if 0 <= column_index < len(first_row):
                             value = first_row[column_index]
                         
-                        logger.debug(f"Value for {column_name}: {value}")
-                        
-                        # Determine which sheets to write to
+                        # Determine sheets to write to
                         sheets_to_write = ExcelTableExporter._get_sheets_to_write(
                             wb, cell_mapping, table_config
                         )
                         
-                        # Write to each sheet
                         for sheet_name in sheets_to_write:
-                            success = ExcelTableExporter.write_to_cell_safe(
-                                wb, 
-                                sheet_name, 
-                                cell_mapping.template_cell, 
-                                value
+                            ExcelTableExporter.write_to_cell_safe(
+                                wb, sheet_name, cell_mapping.template_cell, value
                             )
-                            
-                            if success:
-                                logger.debug(f"[OK] Wrote '{value}' to {sheet_name}!{cell_mapping.template_cell}")
-                            else:
-                                logger.warning(f"[ERROR] Could not write to {sheet_name}!{cell_mapping.template_cell}")
                 
-                # Write tabular data if start position is configured
-                if table_config.start_row > 0 and table_config.start_col and table_data['data']:
-                    logger.info(f"Writing tabular data starting at {table_config.start_col}{table_config.start_row}")
-                    
-                    # Determine which sheets to write to
+                # Write tabular data
+                if table_config.start_row > 0 and table_config.start_col and data:
                     sheets_to_write = ExcelTableExporter._get_sheets_to_write(wb, None, table_config)
-                    
-                    logger.info(f"Writing to {len(sheets_to_write)} sheets")
                     
                     for sheet_name in sheets_to_write:
                         ws = wb[sheet_name]
                         start_col_idx = column_index_from_string(table_config.start_col)
                         
-                        # Find first safe row
+                        # Find safe row
                         safe_row = ExcelTableExporter.find_safe_row_for_table(ws, table_config.start_row)
-                        logger.info(f"Writing to sheet '{sheet_name}' starting at row {safe_row}, column {table_config.start_col}")
                         
-                        # Write data (PURE VALUES ONLY - NO HEADERS)
-                        data_rows = table_data['data']
-                        logger.info(f"Writing {len(data_rows)} data rows")
-                        
-                        # Start data from the specified row directly
-                        start_data_row = safe_row
-                        
-                        # Write data rows
-                        for row_idx, row_data in enumerate(data_rows, start=0):
-                            for col_idx, value in enumerate(row_data, start=0):
+                        # Write data
+                        for row_idx, row_data in enumerate(data, 0):
+                            for col_idx, value in enumerate(row_data, 0):
                                 cell_col = start_col_idx + col_idx
-                                cell_row = start_data_row + row_idx
+                                cell_row = safe_row + row_idx
                                 cell_ref = f"{get_column_letter(cell_col)}{cell_row}"
-                                
-                                ExcelTableExporter.write_to_cell_safe(
-                                    wb, sheet_name, cell_ref, value
-                                )
-                            
-                            # Log progress every 100 rows
-                            if (row_idx + 1) % 100 == 0:
-                                logger.debug(f"  Processed {row_idx + 1} rows...")
+                                ExcelTableExporter.write_to_cell_safe(wb, sheet_name, cell_ref, value)
             
             # Save workbook
-            logger.info("[SAVE] Saving workbook...")
             wb.save(output_path)
-            logger.info("="*60)
-            logger.info("[OK] TEMPLATE EXPORT COMPLETED SUCCESSFULLY")
-            logger.info("="*60)
+            logger.info("Template export completed")
             return True
             
         except Exception as e:
-            logger.error("="*60)
-            logger.error("[ERROR] TEMPLATE EXPORT FAILED")
-            logger.error("="*60)
-            logger.error(f"Error: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Template export failed: {e}\n{traceback.format_exc()}")
             return False
     
     @staticmethod
@@ -720,64 +580,46 @@ class ExcelTableExporter:
     
     @staticmethod
     def write_to_cell_safe(wb, sheet_name: str, cell_ref: str, value: Any) -> bool:
-        """Safely write to a cell, handling merged cells."""
+        """Safely write to a cell"""
         try:
             if sheet_name not in wb.sheetnames:
-                logger.warning(f"Sheet '{sheet_name}' not found in workbook")
                 return False
             
             ws = wb[sheet_name]
-            
-            # Parse cell reference
             match = re.match(r'^([A-Z]+)(\d+)$', cell_ref.upper())
             if not match:
-                logger.warning(f"Invalid cell reference: {cell_ref}")
                 return False
             
             col_letter = match.group(1)
             row_num = int(match.group(2))
-            
             col_num = column_index_from_string(col_letter)
             
-            # Check if cell is part of a merged range
+            # Check for merged cells
             for merged_range in ws.merged_cells.ranges:
                 if (merged_range.min_row <= row_num <= merged_range.max_row and
                     merged_range.min_col <= col_num <= merged_range.max_col):
-                    # Cell is in a merged range
-                    # Write to the top-left cell of the merged range
                     top_left_cell = f"{get_column_letter(merged_range.min_col)}{merged_range.min_row}"
-                    try:
-                        ws[top_left_cell] = value
-                        # Center alignment for merged cells
-                        ws[top_left_cell].alignment = Alignment(horizontal='center', vertical='center')
-                        logger.debug(f"[WRITE] Wrote to merged cell {top_left_cell} (original: {cell_ref})")
-                        return True
-                    except Exception as e:
-                        logger.warning(f"Failed to write to merged cell {top_left_cell}: {e}")
-                        return False
+                    ws[top_left_cell] = value
+                    ws[top_left_cell].alignment = Alignment(horizontal='center', vertical='center')
+                    return True
             
-            # Cell is not merged, write normally
+            # Write to regular cell
             ws[cell_ref] = value
-            logger.debug(f"[WRITE] Wrote to cell {cell_ref}")
             return True
             
-        except Exception as e:
-            logger.error(f"[ERROR] Error writing to cell {sheet_name}!{cell_ref}: {e}")
+        except Exception:
             return False
     
     @staticmethod
     def find_safe_row_for_table(ws, start_row: int) -> int:
-        """Find a safe row to start table data (not in merged cells)"""
+        """Find safe row for table data"""
         current_row = start_row
         
-        # Check if start row is safe (not in merged cells in first 10 columns)
-        for col in range(1, 11):  # Check first 10 columns
+        for col in range(1, 11):
             cell_ref = f"{get_column_letter(col)}{current_row}"
             for merged_range in ws.merged_cells.ranges:
                 if cell_ref in merged_range:
-                    # Row is in merged range, try next row
                     current_row += 1
-                    logger.debug(f"Row {current_row-1} is in merged range, trying row {current_row}")
                     return ExcelTableExporter.find_safe_row_for_table(ws, current_row)
         
         return current_row
@@ -785,57 +627,45 @@ class ExcelTableExporter:
     @staticmethod
     def get_valid_sheet_name(name: str) -> str:
         """Get valid Excel sheet name"""
-        # Remove invalid characters
         invalid_chars = ['\\', '/', '*', '?', ':', '[', ']']
         for char in invalid_chars:
             name = name.replace(char, '_')
         
-        # Replace multiple spaces with single space
         name = ' '.join(name.split())
         
-        # Truncate if too long
         if len(name) > 31:
             name = name[:28] + "..."
-        
-        # Ensure not empty
-        if not name.strip():
-            name = "Sheet"
         
         return name[:31]
 
 # ============================================================================
-# INITIALIZE SESSION STATE
-# ============================================================================
-
-# Initialize session state (must be done before accessing any session state variables)
-if 'db' not in st.session_state:
-    st.session_state.db = DatabaseManager()
-if 'step' not in st.session_state:
-    st.session_state.step = 1
-if 'tables_list' not in st.session_state:
-    st.session_state.tables_list = []
-if 'selected_tables' not in st.session_state:
-    st.session_state.selected_tables = []
-if 'template_path' not in st.session_state:
-    st.session_state.template_path = None
-if 'template_sheets' not in st.session_state:
-    st.session_state.template_sheets = []
-if 'table_configs' not in st.session_state:
-    st.session_state.table_configs = {}
-if 'filters' not in st.session_state:
-    st.session_state.filters = {}
-if 'merge_rules' not in st.session_state:
-    st.session_state.merge_rules = []
-if 'export_log' not in st.session_state:
-    st.session_state.export_log = []
-if 'row_limit' not in st.session_state:
-    st.session_state.row_limit = 1000
-if 'configuring_positions' not in st.session_state:
-    st.session_state.configuring_positions = False
-
-# ============================================================================
 # STREAMLIT APPLICATION
 # ============================================================================
+
+def init_session_state():
+    """Initialize session state"""
+    if 'db' not in st.session_state:
+        st.session_state.db = DatabaseManager()
+    if 'step' not in st.session_state:
+        st.session_state.step = 1
+    if 'tables_list' not in st.session_state:
+        st.session_state.tables_list = []
+    if 'selected_tables' not in st.session_state:
+        st.session_state.selected_tables = []
+    if 'template_path' not in st.session_state:
+        st.session_state.template_path = None
+    if 'template_sheets' not in st.session_state:
+        st.session_state.template_sheets = []
+    if 'table_configs' not in st.session_state:
+        st.session_state.table_configs = {}
+    if 'filters' not in st.session_state:
+        st.session_state.filters = {}
+    if 'merge_rules' not in st.session_state:
+        st.session_state.merge_rules = []
+    if 'row_limit' not in st.session_state:
+        st.session_state.row_limit = 1000
+    if 'configuring_positions' not in st.session_state:
+        st.session_state.configuring_positions = False
 
 def main():
     # Page configuration
@@ -861,84 +691,25 @@ def main():
         border-left: 5px solid #3B82F6;
         margin-bottom: 1.5rem;
     }
-    .success-box {
-        background-color: #d4edda;
-        padding: 1rem;
-        border-radius: 5px;
-        border-left: 4px solid #28a745;
+    .stButton > button {
+        width: 100%;
     }
     .warning-box {
         background-color: #fff3cd;
         padding: 1rem;
         border-radius: 5px;
         border-left: 4px solid #ffc107;
-    }
-    .info-box {
-        background-color: #d1ecf1;
-        padding: 1rem;
-        border-radius: 5px;
-        border-left: 4px solid #17a2b8;
-    }
-    .stDownloadButton {
-        display: inline-block;
-        padding: 0.5rem 1rem;
-        background-color: #4CAF50;
-        color: white;
-        text-align: center;
-        text-decoration: none;
-        border-radius: 4px;
-        font-weight: bold;
         margin: 10px 0;
-    }
-    .debug-info {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
-        margin: 10px 0;
-        font-family: monospace;
-        font-size: 0.9rem;
-    }
-    .table-config {
-        background-color: #f0f7ff;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 10px 0;
-        border-left: 4px solid #4A90E2;
-    }
-    .merge-rules {
-        background-color: #fff8e1;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 10px 0;
-        border-left: 4px solid #FFA000;
-    }
-    .filter-info {
-        background-color: #e8f5e9;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 10px 0;
-        border-left: 4px solid #43A047;
-    }
-    .export-log {
-        background-color: #f5f5f5;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 10px 0;
-        font-family: monospace;
-        font-size: 0.8rem;
-        max-height: 300px;
-        overflow-y: auto;
-    }
-    /* Fix for Streamlit buttons */
-    .stButton > button {
-        width: 100%;
     }
     </style>
     """, unsafe_allow_html=True)
     
     # Title
     st.markdown('<h1 class="main-header">📊 Excel Table Exporter Pro</h1>', unsafe_allow_html=True)
-    st.markdown("Advanced SQL Server to Excel exporter with filtering and multi-sheet support")
+    st.markdown("Export SQL Server tables to Excel with pyodbc")
+    
+    # Initialize session state
+    init_session_state()
     
     # Sidebar
     with st.sidebar:
@@ -946,7 +717,6 @@ def main():
         
         st.markdown("### Navigation")
         
-        # Progress steps
         steps = [
             ("🔗", "Connection", 1),
             ("📋", "Table Selection", 2),
@@ -959,7 +729,7 @@ def main():
             if step_num == st.session_state.step:
                 st.markdown(f"**{icon} {name}**")
             else:
-                if st.button(f"{icon} {name}", key=f"nav_{step_num}", use_container_width=True):
+                if st.button(f"{icon} {name}", key=f"nav_{step_num}"):
                     st.session_state.step = step_num
                     st.rerun()
         
@@ -968,8 +738,7 @@ def main():
         # Connection status
         if st.session_state.db.connected:
             st.success("✅ Connected")
-            st.info(f"Database: {st.session_state.db.database}")
-            if st.button("🔌 Disconnect", use_container_width=True):
+            if st.button("🔌 Disconnect"):
                 st.session_state.db.disconnect()
                 st.session_state.tables_list = []
                 st.session_state.selected_tables = []
@@ -982,20 +751,8 @@ def main():
         # Selected tables
         if st.session_state.selected_tables:
             st.info(f"📋 {len(st.session_state.selected_tables)} tables selected")
-        
-        # Template status
-        if st.session_state.template_path:
-            st.info(f"📄 Template loaded")
-        
-        # Configurations
-        if st.session_state.table_configs:
-            st.info(f"📍 {len(st.session_state.table_configs)} mappings")
-        
-        # Filters
-        if st.session_state.filters:
-            st.info(f"⚙️ {len(st.session_state.filters)} filtered tables")
     
-    # Main content based on current step
+    # Main content
     if st.session_state.step == 1:
         show_connection_tab()
     elif st.session_state.step == 2:
@@ -1021,24 +778,8 @@ def show_connection_tab():
         with col2:
             database = st.text_input("Database", "VPI1", key="conn_database")
         
-        # Tips
-        with st.expander("💡 Connection Tips"):
-            st.markdown("""
-            **Common Issues & Solutions:**
-            1. **Server Format**: Use `SERVER\\INSTANCE` or `SERVER`
-            2. **Windows Authentication**: Must be enabled on SQL Server
-            3. **ODBC Drivers**: Install ODBC Driver 17 for SQL Server
-            4. **Firewall**: Ensure SQL Server port (1433) is open
-            5. **SQL Server**: Must be running and accessible
-            
-            **Tested Connection Strings:**
-            - `MAHESHWAGH\\WINCC`
-            - `localhost\\SQLEXPRESS`
-            - `192.168.1.100`
-            """)
-        
-        # Connect and go to next step button
-        if st.button("🔗 Connect & Go to Next Step", type="primary", use_container_width=True):
+        # Test and Connect button
+        if st.button("🔗 Connect & Continue", type="primary"):
             if not server or not database:
                 st.error("Please enter server and database name")
                 return
@@ -1057,23 +798,24 @@ def show_connection_tab():
                 else:
                     st.error(f"❌ {message}")
         
-        # Test connection button
-        if st.button("🧪 Test Connection", use_container_width=True):
-            if not server or not database:
-                st.error("Please enter server and database name")
-                return
+        # Connection help
+        with st.expander("🔧 Connection Help"):
+            st.markdown("""
+            **Server Examples:**
+            - `SERVER\\INSTANCE` (e.g., MAHESHWAGH\\WINCC)
+            - `localhost\\SQLEXPRESS`
+            - `192.168.1.100`
             
-            with st.spinner("Testing connection..."):
-                success, message = st.session_state.db.connect(
-                    server=server,
-                    database=database
-                )
-                
-                if success:
-                    st.success("✅ Connection test successful!")
-                    st.session_state.db.disconnect()
-                else:
-                    st.error(f"❌ Connection test failed: {message}")
+            **Requirements:**
+            1. SQL Server must be running
+            2. Windows Authentication must be enabled
+            3. ODBC Driver 17 for SQL Server should be installed
+            
+            **Troubleshooting:**
+            - Check if SQL Server is running
+            - Verify Windows Authentication is enabled
+            - Ensure firewall allows connections
+            """)
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1091,56 +833,44 @@ def show_table_selection_tab():
     with st.container():
         st.markdown('<div class="step-box">', unsafe_allow_html=True)
         
-        # Search and filter
-        col1, col2, col3 = st.columns([3, 2, 2])
-        with col1:
-            search = st.text_input("🔍 Search tables", placeholder="Type to filter...", key="table_search")
+        # Search
+        search = st.text_input("🔍 Search tables", placeholder="Type to filter...", key="table_search")
         
-        with col2:
+        # Select all / clear
+        col1, col2 = st.columns(2)
+        with col1:
             if st.button("Select All", use_container_width=True):
                 st.session_state.selected_tables = st.session_state.tables_list.copy()
                 st.rerun()
-        
-        with col3:
+        with col2:
             if st.button("Clear All", use_container_width=True):
                 st.session_state.selected_tables = []
                 st.rerun()
-        
-        # Show table count
-        st.info(f"📊 Total tables available: {len(st.session_state.tables_list)}")
         
         # Filter tables
         filtered = st.session_state.tables_list
         if search:
             filtered = [t for t in filtered if search.lower() in t.lower()]
-            st.info(f"🔍 Found {len(filtered)} tables matching '{search}'")
         
-        # Multi-select with checkboxes
+        # Multi-select
         if filtered:
             selected = st.multiselect(
                 "Select tables to export:",
                 filtered,
                 default=st.session_state.selected_tables,
-                help="Select one or more tables",
                 key="table_multiselect"
             )
             
             st.session_state.selected_tables = selected
             
-            # Show selected tables count
             if selected:
                 st.success(f"✅ Selected {len(selected)} table(s)")
-                
-                with st.expander("📋 View selected tables", expanded=False):
-                    for i, table in enumerate(selected, 1):
-                        display_name = st.session_state.db.get_display_name(table)
-                        st.write(f"{i}. **{table}** → _{display_name}_")
         else:
-            st.warning("No tables found in the database")
+            st.warning("No tables found")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Navigation buttons
+    # Navigation
     col1, col2 = st.columns(2)
     with col1:
         if st.button("← Previous: Connection", use_container_width=True):
@@ -1168,31 +898,17 @@ def show_position_mapping_tab():
     with st.container():
         st.markdown('<div class="step-box">', unsafe_allow_html=True)
         
-        # Template upload section
+        # Template upload
         st.markdown("### 📄 Template Selection")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            uploaded = st.file_uploader("Upload Excel template", type=['xlsx', 'xls'], key="template_upload")
-        
-        with col2:
-            if st.session_state.template_path and st.button("Clear Template", use_container_width=True):
-                st.session_state.template_path = None
-                st.session_state.template_sheets = []
-                st.session_state.table_configs = {}
-                st.rerun()
+        uploaded = st.file_uploader("Upload Excel template", type=['xlsx', 'xls'], key="template_upload")
         
         if uploaded:
             try:
-                # Save template to temp file with error handling
                 temp_dir = tempfile.gettempdir()
                 template_path = os.path.join(temp_dir, uploaded.name)
                 
-                # Read the uploaded file bytes
-                template_bytes = uploaded.getbuffer()
-                
-                # Save to temp file
                 with open(template_path, "wb") as f:
-                    f.write(template_bytes)
+                    f.write(uploaded.getbuffer())
                 
                 st.session_state.template_path = template_path
                 
@@ -1201,132 +917,37 @@ def show_position_mapping_tab():
                     wb = load_workbook(template_path, read_only=True)
                     st.session_state.template_sheets = wb.sheetnames
                     st.success(f"✅ Template loaded with {len(st.session_state.template_sheets)} sheet(s)")
-                    
-                    with st.expander("View sheets"):
-                        for sheet in st.session_state.template_sheets:
-                            st.write(f"• {sheet}")
                 except Exception as e:
                     st.error(f"Error reading template: {e}")
-                    st.session_state.template_sheets = []
             except Exception as e:
                 st.error(f"Error saving template: {e}")
-                st.session_state.template_sheets = []
-        elif st.session_state.template_path:
-            try:
-                if os.path.exists(st.session_state.template_path):
-                    st.info(f"Template: {os.path.basename(st.session_state.template_path)}")
-                    if st.session_state.template_sheets:
-                        st.write(f"Sheets: {', '.join(st.session_state.template_sheets[:5])}")
-                        if len(st.session_state.template_sheets) > 5:
-                            st.write(f"... and {len(st.session_state.template_sheets) - 5} more sheets")
-                else:
-                    st.warning("Template file not found. Please upload again.")
-                    st.session_state.template_path = None
-                    st.session_state.template_sheets = []
-            except:
-                st.warning("Template file not found. Please upload again.")
-                st.session_state.template_path = None
-                st.session_state.template_sheets = []
         
-        # Merge rules section
+        # Merge rules
         st.markdown("### 🔗 Merge Cell Rules (Optional)")
-        st.markdown('<div class="merge-rules">', unsafe_allow_html=True)
-        
         merge_rules_text = st.text_area(
             "Enter merge ranges (one per line): SheetName!StartCell:EndCell",
             height=100,
-            placeholder="Example:\nSheet1!B4:D4  (merges B4, C4, D4)\nSheet1!A1:C1  (merges A1, B1, C1)",
-            key="merge_rules_text",
-            value="\n".join(st.session_state.merge_rules) if st.session_state.merge_rules else ""
+            placeholder="Example:\nSheet1!B4:D4",
+            key="merge_rules_text"
         )
         
-        if st.button("Save Merge Rules", key="save_merge_rules"):
-            if merge_rules_text:
-                st.session_state.merge_rules = [line.strip() for line in merge_rules_text.splitlines() if line.strip()]
-                if st.session_state.merge_rules:
-                    st.success(f"✅ Saved {len(st.session_state.merge_rules)} merge rules")
-            else:
-                st.session_state.merge_rules = []
-                st.info("Merge rules cleared")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Instructions
-        st.markdown("### 📝 Instructions")
-        st.markdown("""
-        **TWO TYPES OF CONFIGURATION:**
-        
-        1. **For BACKGROUND_DATA and BATCH_DATA tables:**
-           - You only need to specify a starting cell position
-           - All data will be inserted starting from this cell
-           - Template already has headers - only values inserted
-        
-        2. **For HEADER tables (and similar):**
-           - You need to map each column to a specific cell
-           - Only the first row of data will be used
-           - Useful for header/static information
-        
-        **Tips:**
-        - Use cell references like `A1`, `B5`, `C10`
-        - Check that cell is not in a merged range
-        - Use "Apply to All Sheets" for consistent data across multiple sheets
-        """)
-        
-        # Configure positions button
+        # Configure positions
         if st.session_state.template_path:
             if st.button("⚙️ Configure Position Mappings", type="primary", use_container_width=True):
-                # Store merge rules
                 if merge_rules_text:
                     st.session_state.merge_rules = [line.strip() for line in merge_rules_text.splitlines() if line.strip()]
-                
-                # Open configuration in new section
                 st.session_state.configuring_positions = True
                 st.rerun()
         else:
-            st.warning("Please upload a template to configure mappings")
-        
-        # Show current configurations
-        if st.session_state.table_configs:
-            st.markdown("### 📋 Current Mappings")
-            for table_name, config in st.session_state.table_configs.items():
-                with st.expander(f"Table: {config.display_name}", expanded=False):
-                    if config.start_row > 0 and config.start_col:
-                        st.write(f"**Type:** Data Table")
-                        st.write(f"**Start Position:** {config.start_col}{config.start_row}")
-                        if config.apply_to_all_sheets:
-                            st.write(f"**Apply to:** All Sheets")
-                        elif config.selected_sheets:
-                            sheets = config.selected_sheets
-                            if len(sheets) <= 3:
-                                st.write(f"**Apply to:** {', '.join(sheets)}")
-                            else:
-                                st.write(f"**Apply to:** {', '.join(sheets[:3])} +{len(sheets)-3} more")
-                        else:
-                            st.write(f"**Apply to:** {config.sheet_name}")
-                    else:
-                        st.write(f"**Type:** Header/Static Data")
-                        st.write(f"**Total Mappings:** {len(config.column_mappings)}")
-                        if config.column_mappings:
-                            for col_name, cell_mapping in config.column_mappings.items():
-                                if cell_mapping.apply_to_all_sheets:
-                                    apply_info = " (All Sheets)"
-                                elif cell_mapping.selected_sheets:
-                                    sheets = cell_mapping.selected_sheets
-                                    if len(sheets) <= 3:
-                                        apply_info = f" (Sheets: {', '.join(sheets)})"
-                                    else:
-                                        apply_info = f" (Sheets: {', '.join(sheets[:3])} +{len(sheets)-3} more)"
-                                else:
-                                    apply_info = f" (Sheet: {cell_mapping.template_sheet})"
-                                st.write(f"• {col_name} → {cell_mapping.template_cell}{apply_info}")
+            st.info("Upload a template to configure mappings")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # If configuring positions, show configuration interface
-    if st.session_state.get('configuring_positions', False):
+    # Show configuration if enabled
+    if st.session_state.configuring_positions:
         show_position_configuration()
     
-    # Navigation buttons
+    # Navigation
     col1, col2 = st.columns(2)
     with col1:
         if st.button("← Previous: Table Selection", use_container_width=True):
@@ -1337,202 +958,60 @@ def show_position_mapping_tab():
             st.session_state.step = 4
             st.rerun()
 
-def _configure_simple_table(table_name: str):
-    """Configure simple table position"""
-    display_name = st.session_state.db.get_display_name(table_name)
-    st.write(f"**Display Name:** {display_name}")
+def show_position_configuration():
+    """Show position configuration"""
+    st.markdown("---")
+    st.markdown("### ⚙️ Position Configuration")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        sheet = st.selectbox(
-            f"Target Sheet for {table_name}",
-            st.session_state.template_sheets,
-            key=f"sheet_{table_name}"
-        )
-    
-    with col2:
-        start_cell = st.text_input(
-            f"Start cell for {table_name}",
-            value="A2",
-            key=f"cell_{table_name}",
-            help="Where should the data start? (e.g., B4, C10)"
-        )
-    
-    # Apply to options
-    apply_option = st.radio(
-        f"Apply to which sheets for {table_name}?",
-        ["This Sheet Only", "All Sheets", "Select Specific Sheets"],
-        key=f"apply_{table_name}"
-    )
-    
-    selected_sheets = []
-    if apply_option == "Select Specific Sheets":
-        selected_sheets = st.multiselect(
-            f"Select sheets for {table_name}",
-            st.session_state.template_sheets,
-            default=[sheet],
-            key=f"select_sheets_{table_name}"
-        )
-    
-    if st.button(f"Save mapping for {table_name}", key=f"save_{table_name}"):
-        if not re.match(r'^[A-Z]+\d+$', start_cell.upper()):
-            st.error("Invalid cell format. Use like B4, C10")
-        else:
-            # Parse cell to get row and column
-            col_letter = ''.join([c for c in start_cell.upper() if c.isalpha()])
-            row_num = int(''.join([c for c in start_cell if c.isdigit()]))
+    # Simple configuration for all tables
+    for table_name in st.session_state.selected_tables:
+        with st.expander(f"Configure: {table_name}", expanded=False):
+            display_name = st.session_state.db.get_display_name(table_name)
             
-            # Determine sheets to apply to
-            apply_to_all = (apply_option == "All Sheets")
-            target_sheets = []
-            
-            if apply_option == "This Sheet Only":
-                target_sheets = [sheet]
-            elif apply_option == "All Sheets":
-                target_sheets = st.session_state.template_sheets
-            else:  # Select Specific Sheets
-                target_sheets = selected_sheets
-            
-            st.session_state.table_configs[table_name] = TableConfig(
-                table_name=table_name,
-                display_name=display_name,
-                start_row=row_num,
-                start_col=col_letter,
-                sheet_name=sheet,
-                column_mappings={},
-                apply_to_all_sheets=apply_to_all,
-                selected_sheets=target_sheets
-            )
-            
-            st.success(f"✅ Mapping saved for {table_name}")
-
-def _configure_header_table(table_name: str):
-    """Configure header table with column mappings"""
-    display_name = st.session_state.db.get_display_name(table_name)
-    st.write(f"**Display Name:** {display_name}")
-    
-    # Get columns for mapping
-    try:
-        columns = st.session_state.db.get_table_columns(table_name)
-        st.write(f"**Columns found:** {len(columns)}")
-        
-        # Show first few columns for mapping
-        cols_to_show = min(10, len(columns))
-        
-        # Create a form for column mappings
-        with st.form(key=f"form_{table_name}"):
-            mappings = []
-            
-            for i, col in enumerate(columns[:cols_to_show]):
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.write(f"**{col}**")
-                with col2:
-                    cell = st.text_input(
-                        f"Cell for {col}",
-                        value="",
-                        key=f"cell_input_{table_name}_{col}",
-                        placeholder="e.g., B4"
-                    )
-                    mappings.append((col, cell))
-            
-            # Apply to options for all columns
-            st.markdown("**Apply to which sheets for all columns?**")
-            apply_option_all = st.radio(
-                f"Apply option for {table_name} columns",
-                ["This Sheet Only", "All Sheets", "Select Specific Sheets"],
-                key=f"apply_all_{table_name}"
-            )
-            
-            selected_sheets_all = []
-            if apply_option_all == "Select Specific Sheets":
-                selected_sheets_all = st.multiselect(
-                    f"Select sheets for all columns in {table_name}",
+            col1, col2 = st.columns(2)
+            with col1:
+                sheet = st.selectbox(
+                    "Target Sheet",
                     st.session_state.template_sheets,
-                    default=[st.session_state.template_sheets[0]] if st.session_state.template_sheets else [],
-                    key=f"select_sheets_all_{table_name}"
+                    key=f"sheet_{table_name}"
                 )
             
-            # Submit button
-            submit = st.form_submit_button(f"Save mappings for {table_name}")
-        
-        if submit:
-            # Collect all column mappings
-            column_mappings = {}
+            with col2:
+                start_cell = st.text_input(
+                    "Start cell",
+                    value="A2",
+                    key=f"cell_{table_name}",
+                    help="e.g., B4, C10"
+                )
             
-            for col, cell in mappings:
-                if cell and re.match(r'^[A-Z]+\d+$', cell.upper()):
-                    # Determine sheets to apply to
-                    apply_all = (apply_option_all == "All Sheets")
-                    target_sheets = []
+            # Simple apply to option
+            apply_option = st.selectbox(
+                "Apply to",
+                ["This Sheet Only", "All Sheets"],
+                key=f"apply_{table_name}"
+            )
+            
+            if st.button(f"Save for {table_name}", key=f"save_{table_name}"):
+                if re.match(r'^[A-Z]+\d+$', start_cell.upper()):
+                    col_letter = ''.join([c for c in start_cell.upper() if c.isalpha()])
+                    row_num = int(''.join([c for c in start_cell if c.isdigit()]))
                     
-                    if apply_option_all == "This Sheet Only":
-                        # Use default sheet
-                        target_sheets = [st.session_state.template_sheets[0]] if st.session_state.template_sheets else []
-                    elif apply_option_all == "All Sheets":
-                        target_sheets = st.session_state.template_sheets
-                    else:  # Select Specific Sheets
-                        target_sheets = selected_sheets_all
+                    apply_to_all = (apply_option == "All Sheets")
+                    target_sheets = st.session_state.template_sheets if apply_to_all else [sheet]
                     
-                    column_mappings[col] = CellMapping(
+                    st.session_state.table_configs[table_name] = TableConfig(
                         table_name=table_name,
-                        column_name=col,
-                        template_sheet=st.session_state.template_sheets[0] if st.session_state.template_sheets else "",
-                        template_cell=cell.upper(),
-                        apply_to_all_sheets=apply_all,
+                        display_name=display_name,
+                        start_row=row_num,
+                        start_col=col_letter,
+                        sheet_name=sheet,
+                        apply_to_all_sheets=apply_to_all,
                         selected_sheets=target_sheets
                     )
-            
-            if column_mappings:
-                st.session_state.table_configs[table_name] = TableConfig(
-                    table_name=table_name,
-                    display_name=display_name,
-                    start_row=0,  # No start position for header tables
-                    start_col="",  # No start column for header tables
-                    sheet_name=st.session_state.template_sheets[0] if st.session_state.template_sheets else "",
-                    column_mappings=column_mappings,
-                    apply_to_all_sheets=(apply_option_all == "All Sheets"),
-                    selected_sheets=selected_sheets_all if apply_option_all == "Select Specific Sheets" else []
-                )
-                
-                st.success(f"✅ {len(column_mappings)} column mappings saved for {table_name}")
-            else:
-                st.warning("No valid column mappings found. Please enter at least one valid cell reference.")
-        
-        if len(columns) > 10:
-            st.info(f"... and {len(columns) - 10} more columns (configured similarly)")
-            
-    except Exception as e:
-        st.error(f"Error getting columns: {e}")
-
-def show_position_configuration():
-    """Show position configuration interface"""
-    st.markdown("---")
-    st.markdown("### ⚙️ Position Mapping Configuration")
-    
-    # Group tables by type for easier configuration
-    simple_tables = []
-    header_tables = []
-    
-    for table_name in st.session_state.selected_tables:
-        if any(keyword in table_name.upper() for keyword in ['BACKGROUND', 'BATCH', 'DATA', 'LOG']):
-            simple_tables.append(table_name)
-        else:
-            header_tables.append(table_name)
-    
-    # Configure simple tables first
-    if simple_tables:
-        st.markdown("#### 📊 Data Tables (Simple Position)")
-        for table_name in simple_tables:
-            with st.expander(f"Configure: {table_name}", expanded=False):
-                _configure_simple_table(table_name)
-    
-    # Configure header tables
-    if header_tables:
-        st.markdown("#### 📄 Header Tables (Column Mapping)")
-        for table_name in header_tables:
-            with st.expander(f"Configure: {table_name}", expanded=False):
-                _configure_header_table(table_name)
+                    
+                    st.success(f"✅ Saved mapping for {table_name}")
+                else:
+                    st.error("Invalid cell format")
     
     # Done button
     if st.button("✅ Done Configuring", type="primary", use_container_width=True):
@@ -1543,139 +1022,64 @@ def show_filters_tab():
     """Filters tab"""
     st.markdown("## Step 4: Data Filters")
     
-    if not st.session_state.selected_tables:
-        st.warning("Please select tables first")
-        if st.button("← Go to Table Selection"):
-            st.session_state.step = 2
-            st.rerun()
-        return
-    
     with st.container():
         st.markdown('<div class="step-box">', unsafe_allow_html=True)
         
-        st.info("Configure filters to limit exported data for each table")
-        
-        # Row limit for all tables
-        st.markdown("### 📊 Global Settings")
+        # Global row limit
         row_limit = st.number_input(
-            "Row limit (0 = all rows)",
+            "Row limit per table (0 = all rows)",
             min_value=0,
             max_value=100000,
             value=1000,
-            key="global_row_limit",
-            help="Maximum number of rows to export per table"
+            key="global_row_limit"
         )
         st.session_state.row_limit = row_limit
         
-        # Configure filters for each table
-        st.markdown("### ⚙️ Table-Specific Filters")
+        # Table-specific filters
         for table_name in st.session_state.selected_tables:
             with st.expander(f"Filters for {table_name}", expanded=False):
-                # Get existing filters
                 current_filters = st.session_state.filters.get(table_name, {})
                 
-                # Get batches
+                # Batch filter
                 batches = st.session_state.db.get_batches_from_table(table_name)
+                if batches:
+                    selected_batch = st.selectbox(
+                        "Select Batch",
+                        ["All Batches"] + batches,
+                        key=f"batch_{table_name}"
+                    )
+                else:
+                    selected_batch = "All Batches"
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    if batches:
-                        selected_batch = st.selectbox(
-                            f"Select Batch",
-                            ["All Batches"] + batches,
-                            index=0 if not current_filters.get('batch') else 
-                                   (["All Batches"] + batches).index(current_filters.get('batch')),
-                            key=f"batch_{table_name}"
-                        )
-                    else:
-                        selected_batch = "All Batches"
-                        st.info("No batch column found")
-                
-                with col2:
-                    # Time filters
-                    enable_time = st.checkbox(f"Enable time filter", 
-                                             value=bool(current_filters.get('start_time') or current_filters.get('end_time')),
-                                             key=f"enable_time_{table_name}")
+                # Time filter
+                enable_time = st.checkbox("Enable time filter", key=f"enable_time_{table_name}")
                 
                 if enable_time:
                     col1, col2 = st.columns(2)
                     with col1:
-                        # Default to 24 hours ago
-                        default_start = datetime.now() - timedelta(hours=24)
-                        if current_filters.get('start_time'):
-                            start_datetime = current_filters['start_time']
-                        else:
-                            start_datetime = default_start
-                        
-                        start_date = st.date_input(
-                            f"Start Date",
-                            value=start_datetime.date(),
-                            key=f"start_date_{table_name}"
-                        )
-                        start_time = st.time_input(
-                            f"Start Time",
-                            value=start_datetime.time(),
-                            key=f"start_time_{table_name}"
-                        )
+                        start_date = st.date_input("Start Date", key=f"start_date_{table_name}")
+                        start_time = st.time_input("Start Time", key=f"start_time_{table_name}")
                     
                     with col2:
-                        # Default to now
-                        default_end = datetime.now()
-                        if current_filters.get('end_time'):
-                            end_datetime = current_filters['end_time']
-                        else:
-                            end_datetime = default_end
-                        
-                        end_date = st.date_input(
-                            f"End Date",
-                            value=end_datetime.date(),
-                            key=f"end_date_{table_name}"
-                        )
-                        end_time = st.time_input(
-                            f"End Time",
-                            value=end_datetime.time(),
-                            key=f"end_time_{table_name}"
-                        )
+                        end_date = st.date_input("End Date", key=f"end_date_{table_name}")
+                        end_time = st.time_input("End Time", key=f"end_time_{table_name}")
                 
-                # Save filters button
-                if st.button(f"Save filters for {table_name}", key=f"save_filters_{table_name}"):
-                    # Combine date and time
-                    start_datetime = None
-                    end_datetime = None
+                if st.button(f"Save filters", key=f"save_filters_{table_name}"):
+                    filters = {}
+                    
+                    if selected_batch != "All Batches":
+                        filters['batch'] = selected_batch
                     
                     if enable_time:
-                        start_datetime = datetime.combine(start_date, start_time)
-                        end_datetime = datetime.combine(end_date, end_time)
+                        filters['start_time'] = datetime.combine(start_date, start_time)
+                        filters['end_time'] = datetime.combine(end_date, end_time)
                     
-                    # Save to session state
-                    st.session_state.filters[table_name] = {
-                        'batch': None if selected_batch == "All Batches" else selected_batch,
-                        'start_time': start_datetime,
-                        'end_time': end_datetime
-                    }
-                    
+                    st.session_state.filters[table_name] = filters
                     st.success(f"✅ Filters saved for {table_name}")
-        
-        # Show current filters summary
-        if st.session_state.filters:
-            st.markdown("### 📋 Current Filters Summary")
-            for table_name, filters in st.session_state.filters.items():
-                filter_text = []
-                if filters.get('batch'):
-                    filter_text.append(f"**Batch:** {filters['batch']}")
-                if filters.get('start_time') and filters.get('end_time'):
-                    filter_text.append(f"**Time:** {filters['start_time'].strftime('%Y-%m-%d %H:%M')} to {filters['end_time'].strftime('%Y-%m-%d %H:%M')}")
-                elif filters.get('start_time'):
-                    filter_text.append(f"**From:** {filters['start_time'].strftime('%Y-%m-%d %H:%M')}")
-                elif filters.get('end_time'):
-                    filter_text.append(f"**To:** {filters['end_time'].strftime('%Y-%m-%d %H:%M')}")
-                
-                if filter_text:
-                    st.markdown(f'<div class="filter-info"><strong>{table_name}</strong>: {", ".join(filter_text)}</div>', unsafe_allow_html=True)
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Navigation buttons
+    # Navigation
     col1, col2 = st.columns(2)
     with col1:
         if st.button("← Previous: Position Mapping", use_container_width=True):
@@ -1683,107 +1087,42 @@ def show_filters_tab():
             st.rerun()
     with col2:
         if st.button("Next: Export →", type="primary", use_container_width=True):
-            st.session_state.step = 4
+            st.session_state.step = 5
             st.rerun()
 
 def show_export_tab():
     """Export tab"""
     st.markdown("## Step 5: Export")
     
-    if not st.session_state.selected_tables:
-        st.warning("Please select tables first")
-        if st.button("← Go to Table Selection"):
-            st.session_state.step = 2
-            st.rerun()
-        return
-    
     with st.container():
         st.markdown('<div class="step-box">', unsafe_allow_html=True)
         
-        # Configuration summary
-        st.info("### 📊 Export Configuration Summary")
+        # Export summary
+        st.info("### 📊 Export Summary")
+        st.write(f"**Tables:** {len(st.session_state.selected_tables)}")
+        st.write(f"**Template:** {'Loaded' if st.session_state.template_path else 'New Excel'}")
+        st.write(f"**Mappings:** {len(st.session_state.table_configs)} configured")
+        st.write(f"**Row Limit:** {st.session_state.row_limit if st.session_state.row_limit > 0 else 'All'}")
         
-        summary_data = {
-            "Selected Tables": len(st.session_state.selected_tables),
-            "Template": os.path.basename(st.session_state.template_path) if st.session_state.template_path else 'None (New Excel)',
-            "Mappings Configured": len(st.session_state.table_configs),
-            "Tables with Filters": len(st.session_state.filters),
-            "Row Limit": f"{st.session_state.row_limit if st.session_state.row_limit > 0 else 'All'} rows per table",
-            "Merge Rules": len(st.session_state.merge_rules)
-        }
-        
-        for key, value in summary_data.items():
-            st.write(f"**{key}:** {value}")
-        
-        # Export options
-        st.markdown("### 📤 Export Options")
-        
+        # Export mode
         if st.session_state.template_path:
             export_mode = st.radio(
-                "Select export mode:",
-                ["Use Template (with mappings)", "New Excel File"],
+                "Export mode:",
+                ["Use Template", "New Excel File"],
                 key="export_mode"
             )
         else:
             export_mode = "New Excel File"
-            st.info("No template loaded - will create new Excel file")
         
         # Output filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        default_name = f"export_{timestamp}.xlsx"
-        
         output_filename = st.text_input(
             "Output filename",
-            value=default_name,
-            help="Name for the exported file"
+            value=f"export_{timestamp}.xlsx",
+            key="output_filename"
         )
         
-        # Preview button
-        if st.button("👁️ Preview Data (First 10 Rows)", use_container_width=True):
-            with st.spinner("Fetching preview data..."):
-                preview_data = {}
-                
-                for table_name in st.session_state.selected_tables[:3]:  # Limit to 3 tables
-                    filters = st.session_state.filters.get(table_name, {})
-                    
-                    result = st.session_state.db.fetch_filtered_data(
-                        table_name=table_name,
-                        batch_name=filters.get('batch'),
-                        start_time=filters.get('start_time'),
-                        end_time=filters.get('end_time'),
-                        limit=10  # Preview limit
-                    )
-                    
-                    if result.get('success'):
-                        preview_data[table_name] = result
-                
-                if preview_data:
-                    for table_name, data in preview_data.items():
-                        with st.expander(f"Preview: {table_name} ({data.get('row_count', 0)} rows)", expanded=False):
-                            if data.get('data'):
-                                # Create DataFrame with generic column names
-                                df_preview = pd.DataFrame(
-                                    data['data'],
-                                    columns=[f"Column_{i+1}" for i in range(len(data['data'][0]) if data['data'] else 0)]
-                                )
-                                st.dataframe(df_preview, use_container_width=True)
-                                
-                                # Show filter info
-                                if data.get('filters_applied'):
-                                    filters = data['filters_applied']
-                                    filter_info = []
-                                    if filters.get('batch'):
-                                        filter_info.append(f"Batch: {filters['batch']}")
-                                    if filters.get('start_time'):
-                                        filter_info.append(f"Start: {filters['start_time'].strftime('%Y-%m-%d %H:%M')}")
-                                    if filters.get('end_time'):
-                                        filter_info.append(f"End: {filters['end_time'].strftime('%Y-%m-%d %H:%M')}")
-                                    if filter_info:
-                                        st.info("Filters applied: " + " | ".join(filter_info))
-                else:
-                    st.warning("No data to preview")
-        
-        # Export button - FIXED VERSION
+        # Export button
         if st.button("🚀 Export to Excel", type="primary", use_container_width=True):
             if not output_filename.endswith('.xlsx'):
                 output_filename += '.xlsx'
@@ -1791,155 +1130,97 @@ def show_export_tab():
             temp_dir = tempfile.gettempdir()
             output_path = os.path.join(temp_dir, output_filename)
             
-            # Create progress and log placeholders
             progress_bar = st.progress(0)
             status_text = st.empty()
-            log_container = st.container()
             
-            # Export function that returns all_data
-            def run_export():
-                try:
-                    # Step 1: Check configuration
-                    status_text.info("Checking configuration...")
-                    progress_bar.progress(10)
-                    
-                    if export_mode == "Use Template (with mappings)":
-                        if not st.session_state.template_path:
-                            return False, "No template loaded", None
-                    
-                    # Step 2: Fetch data
-                    status_text.info("Fetching data from database...")
-                    progress_bar.progress(30)
-                    
-                    all_data = {}
-                    row_limit = st.session_state.row_limit if st.session_state.row_limit > 0 else None
-                    
-                    for i, table_name in enumerate(st.session_state.selected_tables):
-                        status_text.info(f"Fetching {table_name}...")
-                        
-                        filters = st.session_state.filters.get(table_name, {})
-                        
-                        result = st.session_state.db.fetch_filtered_data(
-                            table_name=table_name,
-                            batch_name=filters.get('batch'),
-                            start_time=filters.get('start_time'),
-                            end_time=filters.get('end_time'),
-                            limit=row_limit
-                        )
-                        
-                        all_data[table_name] = result
-                        progress_bar.progress(30 + int(40 * (i + 1) / len(st.session_state.selected_tables)))
-                    
-                    # Check if we got any data
-                    tables_with_data = [t for t, d in all_data.items() if d.get('success') and d.get('row_count', 0) > 0]
-                    if not tables_with_data:
-                        return False, "No data found for any table", all_data
-                    
-                    # Step 3: Export data
-                    status_text.info("Exporting to Excel...")
-                    progress_bar.progress(80)
-                    
-                    if export_mode == "Use Template (with mappings)":
-                        success = ExcelTableExporter.export_tables_to_template(
-                            tables_data=all_data,
-                            template_path=st.session_state.template_path,
-                            table_configs=st.session_state.table_configs,
-                            output_path=output_path,
-                            merge_rules=st.session_state.merge_rules
-                        )
-                    else:
-                        success = ExcelTableExporter.export_tables_to_new_excel(
-                            tables_data=all_data,
-                            output_path=output_path
-                        )
-                    
-                    progress_bar.progress(100)
-                    
-                    if success:
-                        return True, output_path, all_data
-                    else:
-                        return False, "Export failed", all_data
-                        
-                except Exception as e:
-                    logger.error(f"Export error: {str(e)}\n{traceback.format_exc()}")
-                    return False, str(e), all_data if 'all_data' in locals() else {}
-            
-            # Run export and get results
-            success, message, all_data = run_export()
-            
-            if success and all_data:
-                status_text.success("✅ Export completed successfully!")
+            # Export process
+            try:
+                status_text.info("Fetching data...")
+                progress_bar.progress(30)
                 
-                # Provide download link
-                try:
-                    with open(output_path, 'rb') as f:
-                        excel_data = f.read()
+                all_data = {}
+                row_limit = st.session_state.row_limit if st.session_state.row_limit > 0 else None
+                
+                # Fetch data for each table
+                for i, table_name in enumerate(st.session_state.selected_tables):
+                    filters = st.session_state.filters.get(table_name, {})
                     
-                    b64 = base64.b64encode(excel_data).decode()
-                    download_link = f'''
-                    <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
-                       download="{output_filename}" 
-                       class="stDownloadButton">
-                       📥 Download {output_filename}
-                    </a>
-                    '''
-                    st.markdown(download_link, unsafe_allow_html=True)
+                    result = st.session_state.db.fetch_filtered_data(
+                        table_name=table_name,
+                        batch_name=filters.get('batch'),
+                        start_time=filters.get('start_time'),
+                        end_time=filters.get('end_time'),
+                        limit=row_limit
+                    )
                     
-                    # Display summary
-                    with log_container:
-                        st.markdown("### 📊 Export Summary")
-                        
-                        total_rows = sum(d.get('row_count', 0) for d in all_data.values() if d.get('success'))
-                        tables_with_data = [t for t, d in all_data.items() if d.get('success') and d.get('row_count', 0) > 0]
-                        
-                        try:
-                            file_size_kb = os.path.getsize(output_path) / 1024
-                            file_size_info = f"{file_size_kb:.2f} KB"
-                        except:
-                            file_size_info = "N/A"
-                        
-                        st.info(f"""
-                        **Total Rows Exported:** {total_rows:,}
-                        **Tables Exported:** {len(tables_with_data)}
-                        **File Size:** {file_size_info}
-                        **Export Mode:** {export_mode}
-                        """)
+                    all_data[table_name] = result
+                    progress_bar.progress(30 + int(40 * (i + 1) / len(st.session_state.selected_tables)))
+                
+                status_text.info("Exporting to Excel...")
+                progress_bar.progress(80)
+                
+                # Export data
+                success = False
+                if export_mode == "Use Template" and st.session_state.template_path:
+                    success = ExcelTableExporter.export_tables_to_template(
+                        tables_data=all_data,
+                        template_path=st.session_state.template_path,
+                        table_configs=st.session_state.table_configs,
+                        output_path=output_path,
+                        merge_rules=st.session_state.merge_rules
+                    )
+                else:
+                    success = ExcelTableExporter.export_tables_to_new_excel(
+                        tables_data=all_data,
+                        output_path=output_path
+                    )
+                
+                progress_bar.progress(100)
+                
+                if success:
+                    status_text.success("✅ Export completed!")
                     
-                    # Cleanup temp file
+                    # Provide download
                     try:
-                        os.remove(output_path)
-                    except:
-                        pass
+                        with open(output_path, 'rb') as f:
+                            excel_data = f.read()
                         
-                except Exception as e:
-                    status_text.error(f"❌ Error creating download link: {e}")
+                        b64 = base64.b64encode(excel_data).decode()
+                        download_link = f'''
+                        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" 
+                           download="{output_filename}" 
+                           style="background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;display:inline-block;">
+                           📥 Download {output_filename}
+                        </a>
+                        '''
+                        st.markdown(download_link, unsafe_allow_html=True)
+                        
+                        # Cleanup
+                        try:
+                            os.remove(output_path)
+                        except:
+                            pass
+                            
+                    except Exception as e:
+                        st.error(f"Error creating download: {e}")
+                else:
+                    status_text.error("❌ Export failed")
                     
-            elif success and not all_data:
-                status_text.error("❌ Export succeeded but no data was returned")
-            else:
-                status_text.error(f"❌ Export failed: {message}")
-                
-                with log_container:
-                    st.error("Export failed. Please check:")
-                    st.markdown("""
-                    1. **Database Connection**: Ensure you're still connected
-                    2. **Template File**: Close the template in Excel if it's open
-                    3. **Mappings**: Verify position mappings are correct
-                    4. **Permissions**: Ensure write permissions in temp directory
-                    5. **Log File**: Check the terminal logs for details
-                    """)
+            except Exception as e:
+                status_text.error(f"❌ Error: {str(e)}")
+                logger.error(f"Export error: {e}\n{traceback.format_exc()}")
         
         st.markdown('</div>', unsafe_allow_html=True)
     
-    # Navigation buttons
-    col1, col2, col3 = st.columns(3)
+    # Navigation
+    col1, col2 = st.columns(2)
     with col1:
         if st.button("← Previous: Filters", use_container_width=True):
             st.session_state.step = 4
             st.rerun()
     with col2:
-        if st.button("🔄 Start New Export", use_container_width=True):
-            # Reset export-related state
+        if st.button("🔄 Start Over", use_container_width=True):
+            # Reset state
             st.session_state.filters = {}
             st.session_state.table_configs = {}
             st.session_state.template_path = None
@@ -1947,13 +1228,9 @@ def show_export_tab():
             st.session_state.merge_rules = []
             st.session_state.step = 2
             st.rerun()
-    with col3:
-        if st.button("🏠 Go to Connection", use_container_width=True):
-            st.session_state.step = 1
-            st.rerun()
 
 # ============================================================================
-# MAIN EXECUTION
+# RUN APPLICATION
 # ============================================================================
 
 if __name__ == "__main__":

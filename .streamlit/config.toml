@@ -1,8 +1,8 @@
+# .streamlit/config.toml
 [server]
 maxUploadSize = 200
 enableCORS = false
-enableXsrfProtection = false
+enableXsrfProtection = true
 
 [browser]
-serverAddress = "localhost"
 gatherUsageStats = false
