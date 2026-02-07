@@ -1,6 +1,6 @@
 """
 Excel Table Exporter - Complete Streamlit Application
-Version: 3.5.0 - Fixed Session State Initialization
+Version: 3.6.0 - Streamlit Cloud Compatible
 Description: Export SQL Server tables to Excel templates with position mapping
 With advanced filtering and multi-sheet support
 """
@@ -23,6 +23,11 @@ from io import BytesIO
 from typing import Dict, List, Optional, Any, Tuple
 import json
 from dataclasses import dataclass, field
+import urllib.parse
+import warnings
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings('ignore')
 
 # Database imports - using SQLAlchemy for compatibility
 try:
@@ -34,15 +39,12 @@ except ImportError:
     st.error("SQLAlchemy not available. Please install it.")
 
 # ============================================================================
-# LOGGING SETUP
+# LOGGING SETUP (Streamlit Cloud Compatible)
 # ============================================================================
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('excel_exporter.log', encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[logging.StreamHandler(sys.stdout)]  # Removed FileHandler for Streamlit Cloud
 )
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,9 @@ class DatabaseManager:
                     
                     if method['name'] == 'pyodbc':
                         connection_string = method['string']
-                        engine_string = method['engine_string'].format(connection_string)
+                        # URL encode the connection string
+                        params = urllib.parse.quote_plus(connection_string)
+                        engine_string = f"mssql+pyodbc:///?odbc_connect={params}"
                         self.engine = create_engine(
                             engine_string,
                             **method['params']
@@ -533,7 +537,11 @@ class ExcelTableExporter:
             
             # Make a copy of the template
             logger.info("[COPY] Copying template...")
-            shutil.copy2(template_path, output_path)
+            try:
+                shutil.copy2(template_path, output_path)
+            except Exception as e:
+                logger.error(f"Error copying template: {e}")
+                return False
             
             # Load the copied template
             logger.info("[LOAD] Loading template workbook...")
@@ -1174,33 +1182,51 @@ def show_position_mapping_tab():
                 st.rerun()
         
         if uploaded:
-            # Save template
-            temp_dir = tempfile.gettempdir()
-            template_path = os.path.join(temp_dir, uploaded.name)
-            
-            with open(template_path, "wb") as f:
-                f.write(uploaded.getbuffer())
-            
-            st.session_state.template_path = template_path
-            
-            # Get sheet names
             try:
-                wb = load_workbook(template_path, read_only=True)
-                st.session_state.template_sheets = wb.sheetnames
-                st.success(f"✅ Template loaded with {len(st.session_state.template_sheets)} sheet(s)")
+                # Save template to temp file with error handling
+                temp_dir = tempfile.gettempdir()
+                template_path = os.path.join(temp_dir, uploaded.name)
                 
-                with st.expander("View sheets"):
-                    for sheet in st.session_state.template_sheets:
-                        st.write(f"• {sheet}")
+                # Read the uploaded file bytes
+                template_bytes = uploaded.getbuffer()
+                
+                # Save to temp file
+                with open(template_path, "wb") as f:
+                    f.write(template_bytes)
+                
+                st.session_state.template_path = template_path
+                
+                # Get sheet names
+                try:
+                    wb = load_workbook(template_path, read_only=True)
+                    st.session_state.template_sheets = wb.sheetnames
+                    st.success(f"✅ Template loaded with {len(st.session_state.template_sheets)} sheet(s)")
+                    
+                    with st.expander("View sheets"):
+                        for sheet in st.session_state.template_sheets:
+                            st.write(f"• {sheet}")
+                except Exception as e:
+                    st.error(f"Error reading template: {e}")
+                    st.session_state.template_sheets = []
             except Exception as e:
-                st.error(f"Error reading template: {e}")
+                st.error(f"Error saving template: {e}")
                 st.session_state.template_sheets = []
         elif st.session_state.template_path:
-            st.info(f"Template: {os.path.basename(st.session_state.template_path)}")
-            if st.session_state.template_sheets:
-                st.write(f"Sheets: {', '.join(st.session_state.template_sheets[:5])}")
-                if len(st.session_state.template_sheets) > 5:
-                    st.write(f"... and {len(st.session_state.template_sheets) - 5} more sheets")
+            try:
+                if os.path.exists(st.session_state.template_path):
+                    st.info(f"Template: {os.path.basename(st.session_state.template_path)}")
+                    if st.session_state.template_sheets:
+                        st.write(f"Sheets: {', '.join(st.session_state.template_sheets[:5])}")
+                        if len(st.session_state.template_sheets) > 5:
+                            st.write(f"... and {len(st.session_state.template_sheets) - 5} more sheets")
+                else:
+                    st.warning("Template file not found. Please upload again.")
+                    st.session_state.template_path = None
+                    st.session_state.template_sheets = []
+            except:
+                st.warning("Template file not found. Please upload again.")
+                st.session_state.template_path = None
+                st.session_state.template_sheets = []
         
         # Merge rules section
         st.markdown("### 🔗 Merge Cell Rules (Optional)")
@@ -1900,7 +1926,7 @@ def show_export_tab():
                     2. **Template File**: Close the template in Excel if it's open
                     3. **Mappings**: Verify position mappings are correct
                     4. **Permissions**: Ensure write permissions in temp directory
-                    5. **Log File**: Check `excel_exporter.log` for details
+                    5. **Log File**: Check the terminal logs for details
                     """)
         
         st.markdown('</div>', unsafe_allow_html=True)
